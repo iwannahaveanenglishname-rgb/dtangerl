@@ -1,0 +1,2430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deutsch AI - Learn & Practice German</title>
+    
+    <!-- React & Babel Core CDNs -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-out forwards',
+                        'bounce-short': 'bounce 0.5s ease-in-out 1',
+                        'spin-slow': 'spin 3s linear infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        const LOCAL_STORAGE_KEY = 'deutsch_ai_local_data_v5';
+        const API_KEY_STORAGE_KEY = 'deutsch_ai_user_api_key';
+        const QUIZ_STATE_STORAGE_KEY = 'deutsch_ai_quiz_state_v1';
+        const VIEW_STATE_STORAGE_KEY = 'deutsch_ai_view_state_v1';
+        const GENDER_STYLE_STORAGE_KEY = 'deutsch_ai_gender_display_style';
+        const AI_VERB_PERFEKT_STORAGE_KEY = 'deutsch_ai_verb_perfekt_v1';
+        const AI_VERB_PRASENS_STORAGE_KEY = 'deutsch_ai_prasens_v1';
+
+        const defaultSampleData = {
+            folders: [
+                {
+                    id: 'folder_demo_1',
+                    name: 'A1 Level - Core German Vocabulary',
+                    description: 'Common vocabulary with vowel phonetics, noun genders, and verb forms',
+                    createdAt: new Date().toISOString().split('T')[0],
+                    inTrash: false
+                }
+            ],
+            sets: [
+                {
+                    id: 'set_demo_1',
+                    folderId: 'folder_demo_1',
+                    title: 'Lektion 1: Essential Daily Words & Verbs',
+                    description: 'Demonstrating noun genders, plurals, and Partizip forms',
+                    createdAt: new Date().toISOString().split('T')[0],
+                    inTrash: false
+                }
+            ],
+            cards: [
+                { id: 'card_demo_1', setId: 'set_demo_1', article: 'die', german: 'Suppe', ipa: '/ˈzʊpə/', partOfSpeech: '', plural: 'die Suppen', vietnamese: 'Soup / Broth', example: 'Die Suppe schmeckt sehr gut.', exampleTranslation: 'The soup tastes very good.', imageUrl: '', createdAt: new Date().toISOString().split('T')[0], isLearned: false, inTrash: false, hasPartizipPerfekt: false, partizipPerfekt: '', hasPartizipPrasens: false, partizipPrasens: '' },
+                { id: 'card_demo_2', setId: 'set_demo_1', article: 'das', german: 'Bier', ipa: '/biːɐ̯/', partOfSpeech: '', plural: 'die Biere', vietnamese: 'Beer', example: 'Möchten Sie ein Bier trinken?', exampleTranslation: 'Would you like to drink a beer?', imageUrl: '', createdAt: new Date().toISOString().split('T')[0], isLearned: false, inTrash: false, hasPartizipPerfekt: false, partizipPerfekt: '', hasPartizipPrasens: false, partizipPrasens: '' },
+                { id: 'card_demo_3', setId: 'set_demo_1', article: 'der', german: 'Tee', ipa: '/teː/', partOfSpeech: '', plural: 'die Tees', vietnamese: 'Tea', example: 'Ich trinke morgens gerne Tee.', exampleTranslation: 'I enjoy drinking tea in the morning.', imageUrl: '', createdAt: new Date().toISOString().split('T')[0], isLearned: false, inTrash: false, hasPartizipPerfekt: false, partizipPerfekt: '', hasPartizipPrasens: false, partizipPrasens: '' },
+                { id: 'card_demo_4', setId: 'set_demo_1', article: '', german: 'machen', ipa: '/ˈmaxn̩/', partOfSpeech: 'verb', plural: '', vietnamese: 'To do / to make', example: 'Was machst du heute?', exampleTranslation: 'What are you doing today?', imageUrl: '', createdAt: new Date().toISOString().split('T')[0], isLearned: false, inTrash: false, hasPartizipPerfekt: true, partizipPerfekt: 'gemacht', hasPartizipPrasens: true, partizipPrasens: 'machend' },
+                { id: 'card_demo_5', setId: 'set_demo_1', article: '', german: 'schnell', ipa: '/ʃnɛl/', partOfSpeech: 'adj', plural: '', vietnamese: 'Fast / Quick', example: 'Er läuft sehr schnell.', exampleTranslation: 'He runs very fast.', imageUrl: '', createdAt: new Date().toISOString().split('T')[0], isLearned: false, inTrash: false, hasPartizipPerfekt: false, partizipPerfekt: '', hasPartizipPrasens: false, partizipPrasens: '' }
+            ]
+        };
+
+        function parseGermanWordVowels(word) {
+            if (!word || typeof word !== 'string') return [{ text: word || '', type: 'normal' }];
+
+            const matches = [];
+
+            // 1. Long double vowels (ie, aa, ee, oo)
+            const reLongDouble = /(ie|aa|ee|oo|IE|AA|EE|OO|Ie|Aa|Ee|Oo)/g;
+            let m;
+            while ((m = reLongDouble.exec(word)) !== null) {
+                matches.push({ start: m.index, end: m.index + m[0].length, type: 'long', text: m[0] });
+            }
+
+            // 2. Vowel + silent h
+            const reVowelH = /([aeiouäöüAEIOUÄÖÜ]h)/g;
+            while ((m = reVowelH.exec(word)) !== null) {
+                const start = m.index;
+                const end = start + m[0].length;
+                if (!matches.some(existing => (start >= existing.start && start < existing.end) || (end > existing.start && end <= existing.end))) {
+                    matches.push({ start, end, type: 'long', text: m[0] });
+                }
+            }
+
+            // 3. Vowel before ß
+            const reVowelSz = /([aeiouäöüAEIOUÄÖÜ])(?=ß|β)/g;
+            while ((m = reVowelSz.exec(word)) !== null) {
+                const start = m.index;
+                const end = start + m[0].length;
+                if (!matches.some(existing => (start >= existing.start && start < existing.end) || (end > existing.start && end <= existing.end))) {
+                    matches.push({ start, end, type: 'long', text: m[0] });
+                }
+            }
+
+            // 4. Short vowel before double consonants
+            const reShort = /([aeiouäöüAEIOUÄÖÜ])(?=(?:pp|tt|kk|mm|nn|rr|ff|ss|ll|zz|ck|tz|ng|nk|sch))/g;
+            while ((m = reShort.exec(word)) !== null) {
+                const start = m.index;
+                const end = start + m[0].length;
+                if (!matches.some(existing => (start >= existing.start && start < existing.end) || (end > existing.start && end <= existing.end))) {
+                    matches.push({ start, end, type: 'short', text: m[0] });
+                }
+            }
+
+            matches.sort((a, b) => a.start - b.start);
+
+            const filteredMatches = [];
+            let lastEnd = 0;
+            for (const item of matches) {
+                if (item.start >= lastEnd) {
+                    filteredMatches.push(item);
+                    lastEnd = item.end;
+                }
+            }
+
+            const segments = [];
+            let currIdx = 0;
+            for (const item of filteredMatches) {
+                if (item.start > currIdx) {
+                    segments.push({ text: word.slice(currIdx, item.start), type: 'normal' });
+                }
+                segments.push({ text: word.slice(item.start, item.end), type: item.type });
+                currIdx = item.end;
+            }
+            if (currIdx < word.length) {
+                segments.push({ text: word.slice(currIdx), type: 'normal' });
+            }
+
+            return segments;
+        }
+
+        const VowelMarkedText = ({ word, className = "" }) => {
+            if (!word) return null;
+            const segments = parseGermanWordVowels(word);
+
+            return (
+                <span className={`inline-flex items-baseline tracking-normal ${className}`}>
+                    {segments.map((seg, idx) => {
+                        if (seg.type === 'short') {
+                            return (
+                                <span key={idx} className="relative inline-block font-bold">
+                                    {seg.text}
+                                    <span className="absolute left-1/2 -translate-x-1/2 -bottom-[0.45em] text-[0.45em] leading-none text-amber-400 select-none pointer-events-none font-black">●</span>
+                                </span>
+                            );
+                        }
+                        if (seg.type === 'long') {
+                            return (
+                                <span key={idx} className="relative inline-block font-bold">
+                                    {seg.text}
+                                    <span className="absolute left-0 right-0 -bottom-[0.18em] h-[2.5px] bg-amber-400 rounded-full select-none pointer-events-none"></span>
+                                </span>
+                            );
+                        }
+                        return <span key={idx}>{seg.text}</span>;
+                    })}
+                </span>
+            );
+        };
+
+        const getNormalizedPOS = (posStr) => {
+            if (!posStr) return null;
+            const pos = posStr.toString().toLowerCase().trim();
+            if (pos === 'adj' || pos === 'adjective' || pos.startsWith('adj')) return 'adj';
+            if (pos === 'adv' || pos === 'adverb' || pos.startsWith('adv')) return 'adv';
+            if (pos === 'verb' || pos === 'v') return 'verb';
+            return null;
+        };
+
+        const GermanWordDisplay = ({ card, genderDisplayStyle = 'color_word', aiVerbFormPerfekt = false, aiVerbFormPrasens = false }) => {
+            if (!card) return null;
+            const article = card.article ? card.article.toLowerCase().trim() : '';
+            const hasArticle = ['der', 'die', 'das'].includes(article);
+
+            let articleColorClass = 'text-slate-300';
+            let dotColorClass = 'bg-slate-400';
+            if (article === 'der') {
+                articleColorClass = 'text-blue-400 font-bold';
+                dotColorClass = 'bg-blue-500';
+            } else if (article === 'das') {
+                articleColorClass = 'text-emerald-400 font-bold';
+                dotColorClass = 'bg-emerald-500';
+            } else if (article === 'die') {
+                articleColorClass = 'text-rose-400 font-bold';
+                dotColorClass = 'bg-rose-500';
+            }
+
+            const isVerb = getNormalizedPOS(card.partOfSpeech) === 'verb';
+            const showPerfekt = isVerb && aiVerbFormPerfekt && card.hasPartizipPerfekt && card.partizipPerfekt && card.partizipPerfekt.trim();
+            const showPrasens = isVerb && aiVerbFormPrasens && card.hasPartizipPrasens && card.partizipPrasens && card.partizipPrasens.trim();
+
+            return (
+                <div className="inline-flex flex-col">
+                    <div className="inline-flex items-center gap-1.5 flex-wrap">
+                        {hasArticle && genderDisplayStyle === 'colored_dot' && (
+                            <span className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColorClass}`} title={article} />
+                        )}
+                        {hasArticle && genderDisplayStyle === 'color_word' && (
+                            <span className={articleColorClass}>{card.article}</span>
+                        )}
+                        {hasArticle && genderDisplayStyle === 'colored_dot' && (
+                            <span className="font-semibold text-slate-300">{card.article}</span>
+                        )}
+                        <span className="font-bold">
+                            <VowelMarkedText word={card.german} />
+                        </span>
+                    </div>
+                    {(showPerfekt || showPrasens) && (
+                        <div className="text-xs text-slate-400 mt-0.5 space-y-0.5">
+                            {showPerfekt && <div>Partizip Perfekt: <span className="text-slate-200 font-medium">{card.partizipPerfekt.trim()}</span></div>}
+                            {showPrasens && <div>Partizip Präsens: <span className="text-slate-200 font-medium">{card.partizipPrasens.trim()}</span></div>}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        function fisherYatesShuffle(array) {
+            let arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        const getTodayString = () => new Date().toISOString().split('T')[0];
+
+        const playAudio = (text, lang, rate = 1.0) => {
+            if (!text) return;
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel(); 
+                const u = new SpeechSynthesisUtterance(text);
+                u.lang = lang;
+                u.rate = rate;
+                
+                const voices = window.speechSynthesis.getVoices();
+                if (voices.length > 0) {
+                    const matchedVoices = voices.filter(v => v.lang.startsWith(lang) || v.lang.startsWith(lang.replace('-', '_')));
+                    if (matchedVoices.length > 0) {
+                        const preferred = matchedVoices.find(v => v.name.includes('Google') || v.name.includes('Online') || v.name.includes('Premium')) || matchedVoices[0];
+                        u.voice = preferred;
+                    }
+                }
+                
+                window.speechSynthesis.speak(u);
+            }
+        };
+
+        function useLongPress(onLongPress, onClick, { delay = 600 } = {}) {
+            const timerRef = useRef(null);
+            const isLongPressRef = useRef(false);
+
+            const start = useCallback((e) => {
+                if (e.type === 'mousedown' && e.button !== 0) return;
+                isLongPressRef.current = false;
+                timerRef.current = setTimeout(() => {
+                    isLongPressRef.current = true;
+                    if (window.navigator && window.navigator.vibrate) {
+                        try { window.navigator.vibrate(50); } catch (err) {}
+                    }
+                    onLongPress(e);
+                }, delay);
+            }, [onLongPress, delay]);
+
+            const stop = useCallback(() => {
+                if (timerRef.current) {
+                    clearTimeout(timerRef.current);
+                    timerRef.current = null;
+                }
+            }, []);
+
+            const handleClick = useCallback((e) => {
+                if (isLongPressRef.current) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    isLongPressRef.current = false;
+                    return;
+                }
+                if (onClick) {
+                    onClick(e);
+                }
+            }, [onClick]);
+
+            return { onMouseDown: start, onMouseUp: stop, onMouseLeave: stop, onTouchStart: start, onTouchEnd: stop, onTouchMove: stop, onClick: handleClick };
+        }
+
+        const callGeminiAPI = async (prompt, systemInstruction = "", responseSchema = null, customApiKey = "") => {
+            const apiKey = customApiKey.trim();
+            if (!apiKey) {
+                throw new Error("API key is missing. Please check your Gemini API key in Settings.");
+            }
+            
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+            
+            const payload = { contents: [{ parts: [{ text: prompt }] }] };
+            if (systemInstruction) payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+            if (responseSchema) payload.generationConfig = { responseMimeType: "application/json", responseSchema: responseSchema };
+            
+            try {
+                const res = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!res.ok) {
+                    let errorMsg = `HTTP Error ${res.status}`;
+                    try {
+                        const errData = await res.json();
+                        if (errData && errData.error && errData.error.message) {
+                            errorMsg = errData.error.message;
+                        }
+                    } catch (e) {
+                        try {
+                            errorMsg = await res.text();
+                        } catch (tErr) {
+                            errorMsg = `Status ${res.status}`;
+                        }
+                    }
+                    throw new Error(`API Error: [${res.status}] - ${errorMsg}`);
+                }
+                
+                const data = await res.json();
+                
+                const candidate = data.candidates && data.candidates[0];
+                const parts = candidate && candidate.content && candidate.content.parts;
+                if (!parts || parts.length === 0) {
+                    throw new Error("Invalid response format received from AI API.");
+                }
+
+                const textPart = parts.find(p => p.text && !p.thought) || parts.find(p => p.text) || parts[0];
+                if (!textPart || typeof textPart.text !== 'string') {
+                    throw new Error("No text content found in AI API response.");
+                }
+
+                return textPart.text;
+            } catch (err) {
+                if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
+                    throw new Error("Network Error: Unable to connect to AI API. Please check your internet connection.");
+                }
+                throw err;
+            }
+        };
+
+        const getDistractors = (correctStr, allCards, mapFn, fallbackDistractors = ['A', 'B', 'C']) => {
+            let pool = allCards.map(mapFn).filter(v => v && v.toLowerCase() !== correctStr.toLowerCase());
+            pool = Array.from(new Set(pool));
+            if (pool.length < 3) return fallbackDistractors.slice(0, 3);
+            return fisherYatesShuffle(pool).slice(0, 3);
+        };
+
+        const Icons = {
+            Folder: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>,
+            Book: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>,
+            Card: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>,
+            Plus: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>,
+            Trash: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>,
+            Sparkles: () => <svg className="w-5 h-5 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 18.6 8.378a1 1 0 01.55 1.706l-3.35 3.063.929 4.526a1 1 0 01-1.481 1.076L11 16.32l-3.244 2.43a1 1 0 01-1.48-1.077l.928-4.525-3.35-3.064a1 1 0 01.55-1.706l4.455-1.177 1.179-4.456A1 1 0 0112 2z" clipRule="evenodd"/></svg>,
+            Speaker: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>,
+            Check: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>,
+            Cross: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>,
+            Home: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
+            Edit: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>,
+            Menu: () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"/></svg>,
+            ChevronRight: () => <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg>,
+            Study: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+            Quiz: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+            Upload: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
+            ArrowLeft: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>,
+            ArrowRight: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>,
+            Undo: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>,
+            Trophy: () => <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2 0h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>,
+            Key: () => <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>,
+            Download: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>,
+            Refresh: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+        };
+
+        const SidebarFolderItem = ({ folder, countSets, isSelected, onSelect, onLongPressDelete }) => {
+            const pressHandlers = useLongPress(onLongPressDelete, onSelect);
+            return (
+                <div 
+                    {...pressHandlers}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all mb-1 select-none ${isSelected ? 'bg-amber-500 text-slate-950 font-bold shadow-md' : 'text-slate-300 hover:bg-slate-800'}`}
+                >
+                    <div className="flex items-center gap-2 truncate">
+                        <Icons.Folder />
+                        <span className="truncate text-sm">{folder.name}</span>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${isSelected ? 'bg-slate-950/20 text-slate-900' : 'bg-slate-800 text-slate-400'}`}>
+                        {countSets}
+                    </span>
+                </div>
+            );
+        };
+
+        const FolderGridCard = ({ folder, folderSetsCount, onSelect, onEdit, onLongPressDelete }) => {
+            const pressHandlers = useLongPress(onLongPressDelete, onSelect);
+            return (
+                <div 
+                    {...pressHandlers}
+                    className="group relative bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl p-5 cursor-pointer transition-all transform hover:-translate-y-1 hover:shadow-xl hover:border-amber-500/30 overflow-hidden"
+                >
+                    <div className="absolute top-0 left-0 w-1 h-full bg-amber-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div className="flex justify-between items-start mb-3">
+                        <div className="p-3 bg-amber-500/10 text-amber-400 rounded-xl">
+                            <Icons.Folder />
+                        </div>
+                        <button onClick={onEdit} className="p-2 text-slate-400 hover:text-white hover:bg-slate-600 rounded-lg transition-colors" title="Edit Folder">
+                            <Icons.Edit />
+                        </button>
+                    </div>
+                    <h4 className="font-bold text-lg text-white mb-1 truncate">{folder.name}</h4>
+                    <p className="text-sm text-slate-400 line-clamp-2 mb-3 min-h-[40px]">{folder.description || 'No description'}</p>
+                    <div className="flex items-center text-xs text-slate-500 font-medium bg-slate-900/50 inline-block px-3 py-1.5 rounded-lg">
+                        {folderSetsCount} Sets
+                    </div>
+                </div>
+            );
+        };
+
+        const SetGridCard = ({ setItem, cardsCount, onSelect, onEdit, onLongPressDelete }) => {
+            const pressHandlers = useLongPress(onLongPressDelete, onSelect);
+            return (
+                <div 
+                    {...pressHandlers}
+                    className="group bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl p-5 cursor-pointer transition-all transform hover:-translate-y-1 hover:shadow-xl overflow-hidden flex flex-col"
+                >
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-2">
+                            <Icons.Book /> Study Set
+                        </div>
+                        <button onClick={onEdit} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-600 rounded-lg transition-colors">
+                            <Icons.Edit />
+                        </button>
+                    </div>
+                    <h4 className="font-bold text-lg text-white mb-1 line-clamp-2 flex-1">{setItem.title}</h4>
+                    {setItem.description && <p className="text-sm text-slate-400 line-clamp-1 mb-4">{setItem.description}</p>}
+                    
+                    <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-700">
+                        <span className="text-xs text-slate-400 font-medium bg-slate-900 px-2.5 py-1 rounded-md">{cardsCount} Cards</span>
+                        <span className="text-xs text-slate-500">{setItem.createdAt}</span>
+                    </div>
+                </div>
+            );
+        };
+
+        const FlashcardListItem = ({ card, genderDisplayStyle, aiVerbFormPerfekt, aiVerbFormPrasens, onEdit, onToggleLearned, onLongPressDelete }) => {
+            const pressHandlers = useLongPress(onLongPressDelete, onEdit);
+            const posTag = getNormalizedPOS(card.partOfSpeech);
+
+            return (
+                <div 
+                    {...pressHandlers}
+                    className={`group flex flex-col p-4 rounded-xl border transition-all cursor-pointer ${card.isLearned ? 'bg-slate-900/50 border-slate-800 opacity-60' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 hover:border-slate-500'}`}
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 flex-1 overflow-hidden">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onToggleLearned(card); }}
+                                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${card.isLearned ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-500 text-transparent hover:border-emerald-500'}`}
+                            >
+                                <Icons.Check />
+                            </button>
+                            <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4">
+                                <div className="truncate">
+                                    <GermanWordDisplay card={card} genderDisplayStyle={genderDisplayStyle} aiVerbFormPerfekt={aiVerbFormPerfekt} aiVerbFormPrasens={aiVerbFormPrasens} />
+                                    {card.ipa && <span className="text-xs font-mono text-slate-400 ml-2">[{card.ipa}]</span>}
+                                    {posTag && <span className="text-xs font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 ml-2">{posTag}</span>}
+                                    {card.plural && card.plural.trim() && <span className="text-sm text-slate-400 ml-2">(Plural: {card.plural.trim()})</span>}
+                                    {card.example && <p className="text-xs text-slate-400 truncate mt-0.5 italic">{card.example}</p>}
+                                    {card.exampleTranslation && <p className="text-xs text-slate-500 truncate mt-0.5">{card.exampleTranslation}</p>}
+                                </div>
+                                <div className="truncate flex items-center text-slate-300">
+                                    <span className="truncate font-semibold">{card.vietnamese}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {card.imageUrl && (
+                            <div className="hidden md:block w-12 h-12 rounded-lg bg-slate-900 overflow-hidden ml-4 flex-shrink-0">
+                                <img src={card.imageUrl} alt={card.german} className="w-full h-full object-cover" onError={(e) => e.target.style.display = 'none'} />
+                            </div>
+                        )}
+                        
+                        <div className="flex items-center ml-4 gap-1">
+                            <button onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="p-2 text-slate-400 hover:text-white rounded-lg">
+                                <Icons.Edit />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-700/50">
+                        <button onClick={(e) => { e.stopPropagation(); playAudio((card.article ? card.article + ' ' : '') + card.german, 'de-DE'); }} className="flex items-center gap-1 text-xs px-2 py-1 bg-slate-900 rounded-md text-slate-400 hover:text-amber-400 transition-colors">
+                            <Icons.Speaker /> German
+                        </button>
+                        {card.plural && card.plural.trim() && (
+                            <button onClick={(e) => { e.stopPropagation(); playAudio(card.plural, 'de-DE'); }} className="flex items-center gap-1 text-xs px-2 py-1 bg-slate-900 rounded-md text-slate-400 hover:text-amber-400 transition-colors">
+                                <Icons.Speaker /> Plural
+                            </button>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); playAudio(card.vietnamese, 'en-US'); }} className="flex items-center gap-1 text-xs px-2 py-1 bg-slate-900 rounded-md text-slate-400 hover:text-emerald-400 transition-colors">
+                            <Icons.Speaker /> Translation
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        function App() {
+            const [folders, setFolders] = useState([]);
+            const [sets, setSets] = useState([]);
+            const [cards, setCards] = useState([]);
+            const [userApiKey, setUserApiKey] = useState('');
+            const [genderDisplayStyle, setGenderDisplayStyle] = useState('color_word');
+            const [aiVerbFormPerfekt, setAiVerbFormPerfekt] = useState(false);
+            const [aiVerbFormPrasens, setAiVerbFormPrasens] = useState(false);
+
+            const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+            const [currentView, setCurrentView] = useState('dashboard');
+            const [activeFolderId, setActiveFolderId] = useState(null);
+            const [activeSetId, setActiveSetId] = useState(null);
+            const [sidebarOpen, setSidebarOpen] = useState(false);
+            
+            const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+            const [editingFolder, setEditingFolder] = useState(null);
+            const [folderForm, setFolderForm] = useState({ name: '', description: '' });
+            
+            const [isSetModalOpen, setIsSetModalOpen] = useState(false);
+            const [editingSet, setEditingSet] = useState(null);
+            const [setForm, setSetForm] = useState({ title: '', description: '', folderId: '' });
+            
+            const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+            const [editingCard, setEditingCard] = useState(null);
+            const [cardForm, setCardForm] = useState({ 
+                german: '', article: '', ipa: '', partOfSpeech: '', plural: '', 
+                vietnamese: '', example: '', exampleTranslation: '', imageUrl: '',
+                hasPartizipPerfekt: false, partizipPerfekt: '',
+                hasPartizipPrasens: false, partizipPrasens: ''
+            });
+            
+            const [isAiImportModalOpen, setIsAiImportModalOpen] = useState(false);
+            const [importRawText, setImportRawText] = useState('');
+            const [customPromptNote, setCustomPromptNote] = useState('');
+            const [isAiImporting, setIsAiImporting] = useState(false);
+            const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
+            const [toastMessage, setToastMessage] = useState(null);
+            
+            const [studySession, setStudySession] = useState({
+                cards: [],
+                history: [0],
+                historyIndex: 0,
+                isFlipped: false,
+                showResult: false,
+                direction: 'de-en'
+            });
+            
+            const [isQuizConfigOpen, setIsQuizConfigOpen] = useState(false);
+            const [quizConfig, setQuizConfig] = useState({
+                quizMode: 'mixed',
+                difficulty: 'medium',
+                answerFormat: 'mixed',
+                customPrompt: ''
+            });
+
+            const [quizState, setQuizState] = useState({
+                questions: [],
+                currentIndex: 0,
+                userAnswers: {},
+                isSubmitted: false,
+                score: 0,
+                wrongQuestions: [],
+                answeredQuestions: [],
+                isTest2: false,
+                isLoadingAI: false,
+                customTitle: ''
+            });
+
+            const [writtenInput, setWrittenInput] = useState('');
+            const fileInputRef = useRef(null);
+            const writtenInputRef = useRef(null);
+            const [currentCheckResult, setCurrentCheckResult] = useState(null);
+
+            // Listening & Dictation State
+            const [isListeningDictationModalOpen, setIsListeningDictationModalOpen] = useState(false);
+            const [listeningDictationState, setListeningDictationState] = useState({
+                mode: null,
+                wordSubMode: null,
+                questions: [],
+                currentIndex: 0,
+                userAnswer: '',
+                playbackSpeed: 1.0,
+                isSubmitted: false,
+                score: 0,
+                answeredQuestions: [],
+                wrongQuestions: [],
+                isLoadingAI: false
+            });
+            const [dictationCheckResult, setDictationCheckResult] = useState(null);
+
+            useEffect(() => {
+                loadLocalData();
+                const key = localStorage.getItem(API_KEY_STORAGE_KEY);
+                if (key) setUserApiKey(key);
+                const gStyle = localStorage.getItem(GENDER_STYLE_STORAGE_KEY);
+                if (gStyle) setGenderDisplayStyle(gStyle);
+                const savedPerfekt = localStorage.getItem(AI_VERB_PERFEKT_STORAGE_KEY);
+                if (savedPerfekt !== null) setAiVerbFormPerfekt(savedPerfekt === 'true');
+                const savedPrasens = localStorage.getItem(AI_VERB_PRASENS_STORAGE_KEY);
+                if (savedPrasens !== null) setAiVerbFormPrasens(savedPrasens === 'true');
+            }, []);
+
+            useEffect(() => {
+                if (quizState.questions.length > 0 && currentView.startsWith('quiz_')) {
+                    localStorage.setItem(QUIZ_STATE_STORAGE_KEY, JSON.stringify(quizState));
+                }
+            }, [quizState, currentView]);
+
+            useEffect(() => {
+                localStorage.setItem(VIEW_STATE_STORAGE_KEY, currentView);
+            }, [currentView]);
+
+            useEffect(() => {
+                if ((currentView === 'quiz_play' || currentView === 'listening_dictation_play') && !currentCheckResult && !dictationCheckResult && writtenInputRef.current) {
+                    const timer = setTimeout(() => {
+                        if (writtenInputRef.current) writtenInputRef.current.focus();
+                    }, 50);
+                    return () => clearTimeout(timer);
+                }
+            }, [currentView, quizState.currentIndex, listeningDictationState.currentIndex, currentCheckResult, dictationCheckResult]);
+            
+            useEffect(() => {
+                if (currentView === 'quiz_play' && quizState.questions.length > 0) {
+                    const currentQ = quizState.questions[quizState.currentIndex];
+                    if (currentQ && currentQ.type === 'listen' && !currentCheckResult) {
+                        playAudio(currentQ.germanSpeech, 'de-DE');
+                    }
+                }
+            }, [quizState.currentIndex, currentView]);
+
+            useEffect(() => {
+                if (currentView === 'listening_dictation_play' && listeningDictationState.questions.length > 0) {
+                    const q = listeningDictationState.questions[listeningDictationState.currentIndex];
+                    if (q && !dictationCheckResult) {
+                        playAudio(q.audioText, q.audioLang || 'de-DE', listeningDictationState.playbackSpeed);
+                    }
+                }
+            }, [listeningDictationState.currentIndex, currentView]);
+
+            const showToast = (msg) => {
+                setToastMessage(msg);
+                setTimeout(() => setToastMessage(null), 3500);
+            };
+
+            const loadLocalData = () => {
+                try {
+                    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        setFolders(parsed.folders || []);
+                        setSets(parsed.sets || []);
+                        setCards(parsed.cards || []);
+                    } else {
+                        setFolders(defaultSampleData.folders);
+                        setSets(defaultSampleData.sets);
+                        setCards(defaultSampleData.cards);
+                        saveToLocalStorage(defaultSampleData.folders, defaultSampleData.sets, defaultSampleData.cards);
+                    }
+                    const savedQuiz = localStorage.getItem(QUIZ_STATE_STORAGE_KEY);
+                    if (savedQuiz) setQuizState(JSON.parse(savedQuiz));
+                    const savedView = localStorage.getItem(VIEW_STATE_STORAGE_KEY);
+                    if (savedView) setCurrentView(savedView);
+                } catch (e) {
+                    setFolders(defaultSampleData.folders); setSets(defaultSampleData.sets); setCards(defaultSampleData.cards);
+                }
+            };
+
+            const saveToLocalStorage = (newFolders, newSets, newCards) => {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ folders: newFolders, sets: newSets, cards: newCards }));
+            };
+
+            const saveApiKey = (keyStr) => {
+                setUserApiKey(keyStr); localStorage.setItem(API_KEY_STORAGE_KEY, keyStr);
+                showToast("API Key saved successfully!"); setIsApiKeyModalOpen(false);
+            };
+
+            const updateGenderDisplayStyle = (style) => {
+                setGenderDisplayStyle(style);
+                localStorage.setItem(GENDER_STYLE_STORAGE_KEY, style);
+            };
+
+            const toggleAiVerbPerfekt = () => {
+                const nextVal = !aiVerbFormPerfekt;
+                setAiVerbFormPerfekt(nextVal);
+                localStorage.setItem(AI_VERB_PERFEKT_STORAGE_KEY, nextVal);
+            };
+
+            const toggleAiVerbPrasens = () => {
+                const nextVal = !aiVerbFormPrasens;
+                setAiVerbFormPrasens(nextVal);
+                localStorage.setItem(AI_VERB_PRASENS_STORAGE_KEY, nextVal);
+            };
+
+            const exportDataJSON = () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ folders, sets, cards, genderDisplayStyle, aiVerbFormPerfekt, aiVerbFormPrasens, exportDate: new Date().toISOString() }, null, 2));
+                const downloadAnchor = document.createElement('a');
+                downloadAnchor.setAttribute("href", dataStr); downloadAnchor.setAttribute("download", `Deutsch_AI_Backup_${getTodayString()}.json`);
+                document.body.appendChild(downloadAnchor); downloadAnchor.click(); downloadAnchor.remove();
+                showToast("Backup downloaded successfully!");
+            };
+
+            const handleImportJSON = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const imported = JSON.parse(event.target.result);
+                        if (imported.folders && imported.sets && imported.cards) {
+                            setFolders(imported.folders); setSets(imported.sets); setCards(imported.cards);
+                            saveToLocalStorage(imported.folders, imported.sets, imported.cards);
+                            if (imported.genderDisplayStyle) {
+                                setGenderDisplayStyle(imported.genderDisplayStyle);
+                                localStorage.setItem(GENDER_STYLE_STORAGE_KEY, imported.genderDisplayStyle);
+                            }
+                            if (imported.aiVerbFormPerfekt !== undefined) {
+                                setAiVerbFormPerfekt(imported.aiVerbFormPerfekt);
+                                localStorage.setItem(AI_VERB_PERFEKT_STORAGE_KEY, imported.aiVerbFormPerfekt);
+                            }
+                            if (imported.aiVerbFormPrasens !== undefined) {
+                                setAiVerbFormPrasens(imported.aiVerbFormPrasens);
+                                localStorage.setItem(AI_VERB_PRASENS_STORAGE_KEY, imported.aiVerbFormPrasens);
+                            }
+                            showToast("Data imported successfully!");
+                        } else alert("Invalid JSON structure!");
+                    } catch (err) { alert("Cannot read this JSON file!"); }
+                };
+                reader.readAsText(file);
+            };
+
+            const handleSaveFolder = async (e) => {
+                if (e) e.preventDefault();
+                if (!folderForm.name.trim()) return;
+                const folderId = editingFolder ? editingFolder.id : 'folder_' + Date.now();
+                const data = { id: folderId, name: folderForm.name.trim(), description: folderForm.description.trim(), createdAt: editingFolder ? editingFolder.createdAt : getTodayString(), inTrash: editingFolder ? editingFolder.inTrash : false };
+                const updated = editingFolder ? folders.map(f => f.id === folderId ? data : f) : [...folders, data];
+                setFolders(updated); saveToLocalStorage(updated, sets, cards);
+                showToast(editingFolder ? "Folder updated!" : "New folder created!");
+                setIsFolderModalOpen(false);
+                if (!editingFolder) { setActiveFolderId(folderId); setCurrentView('folder'); }
+            };
+
+            const handleSoftDeleteFolder = (folderId) => {
+                const updated = folders.map(f => f.id === folderId ? { ...f, inTrash: true } : f);
+                setFolders(updated); saveToLocalStorage(updated, sets, cards);
+                showToast("Folder moved to trash!");
+                if (activeFolderId === folderId) { setCurrentView('dashboard'); setActiveFolderId(null); }
+                setConfirmDialog({ isOpen: false, message: '', onConfirm: null });
+            };
+
+            const handleLongPressDeleteFolder = (folder) => setConfirmDialog({ isOpen: true, message: `Move folder "${folder.name}" to trash?`, onConfirm: () => handleSoftDeleteFolder(folder.id) });
+
+            const handleRestoreFolder = (folderId) => {
+                const updated = folders.map(f => f.id === folderId ? { ...f, inTrash: false } : f);
+                setFolders(updated); saveToLocalStorage(updated, sets, cards);
+                showToast("Folder restored!");
+            };
+
+            const handlePermanentDeleteFolder = (folderId) => {
+                const updated = folders.filter(f => f.id !== folderId);
+                setFolders(updated); saveToLocalStorage(updated, sets, cards);
+                showToast("Folder permanently deleted!");
+                setConfirmDialog({ isOpen: false, message: '', onConfirm: null });
+            };
+
+            const handleSaveSet = async (e) => {
+                if(e) e.preventDefault();
+                if (!setForm.title.trim()) return;
+                const targetFolderId = setForm.folderId || activeFolderId || '';
+                const setId = editingSet ? editingSet.id : 'set_' + Date.now();
+                const data = { id: setId, title: setForm.title.trim(), description: setForm.description.trim(), folderId: targetFolderId, createdAt: editingSet ? editingSet.createdAt : getTodayString(), inTrash: editingSet ? editingSet.inTrash : false };
+                const updated = editingSet ? sets.map(s => s.id === setId ? data : s) : [...sets, data];
+                setSets(updated); saveToLocalStorage(folders, updated, cards);
+                showToast(editingSet ? "Set updated!" : "New set created!");
+                setIsSetModalOpen(false);
+                if (!editingSet) { setActiveSetId(setId); setCurrentView('set'); }
+            };
+
+            const handleSoftDeleteSet = (setId) => {
+                const updated = sets.map(s => s.id === setId ? { ...s, inTrash: true } : s);
+                setSets(updated); saveToLocalStorage(folders, updated, cards);
+                showToast("Set moved to trash!");
+                if (activeSetId === setId) { setCurrentView(activeFolderId ? 'folder' : 'dashboard'); setActiveSetId(null); }
+                setConfirmDialog({ isOpen: false, message: '', onConfirm: null });
+            };
+
+            const handleLongPressDeleteSet = (setItem) => setConfirmDialog({ isOpen: true, message: `Move set "${setItem.title}" to trash?`, onConfirm: () => handleSoftDeleteSet(setItem.id) });
+
+            const handleRestoreSet = (setId) => {
+                const updated = sets.map(s => s.id === setId ? { ...s, inTrash: false } : s);
+                setSets(updated); saveToLocalStorage(folders, updated, cards);
+                showToast("Set restored!");
+            };
+
+            const handlePermanentDeleteSet = (setId) => {
+                const updated = sets.filter(s => s.id !== setId);
+                setSets(updated); saveToLocalStorage(folders, updated, cards);
+                showToast("Set permanently deleted!");
+                setConfirmDialog({ isOpen: false, message: '', onConfirm: null });
+            };
+
+            const handleSaveCard = async (e) => {
+                if(e) e.preventDefault();
+                if (!cardForm.german.trim() || !cardForm.vietnamese.trim()) return;
+                if (!activeSetId) return;
+
+                const cardId = editingCard ? editingCard.id : 'card_' + Date.now();
+                const data = {
+                    id: cardId, setId: activeSetId, german: cardForm.german.trim(), article: cardForm.article || '', 
+                    ipa: cardForm.ipa?.trim() || '', partOfSpeech: cardForm.partOfSpeech || '', plural: cardForm.plural?.trim() || '',
+                    vietnamese: cardForm.vietnamese.trim(), example: cardForm.example.trim(), exampleTranslation: cardForm.exampleTranslation?.trim() || '', 
+                    imageUrl: cardForm.imageUrl.trim(),
+                    hasPartizipPerfekt: Boolean(cardForm.hasPartizipPerfekt),
+                    partizipPerfekt: cardForm.partizipPerfekt?.trim() || '',
+                    hasPartizipPrasens: Boolean(cardForm.hasPartizipPrasens),
+                    partizipPrasens: cardForm.partizipPrasens?.trim() || '',
+                    createdAt: editingCard ? editingCard.createdAt : getTodayString(), 
+                    isLearned: editingCard ? editingCard.isLearned : false, 
+                    inTrash: editingCard ? editingCard.inTrash : false
+                };
+                const updated = editingCard ? cards.map(c => c.id === cardId ? data : c) : [...cards, data];
+                setCards(updated); saveToLocalStorage(folders, sets, updated);
+                showToast(editingCard ? "Card updated!" : "New card created!");
+                setIsCardModalOpen(false);
+            };
+
+            const handleSoftDeleteCard = (cardId) => {
+                const updated = cards.map(c => c.id === cardId ? { ...c, inTrash: true } : c);
+                setCards(updated); saveToLocalStorage(folders, sets, updated);
+                showToast("Card moved to trash!");
+                setConfirmDialog({ isOpen: false, message: '', onConfirm: null });
+            };
+
+            const handleLongPressDeleteCard = (card) => setConfirmDialog({ isOpen: true, message: `Delete card "${card.article ? card.article + ' ' : ''}${card.german}"?`, onConfirm: () => handleSoftDeleteCard(card.id) });
+
+            const handleRestoreCard = (cardId) => {
+                const updated = cards.map(c => c.id === cardId ? { ...c, inTrash: false } : c);
+                setCards(updated); saveToLocalStorage(folders, sets, updated);
+                showToast("Card restored!");
+            };
+
+            const handlePermanentDeleteCard = (cardId) => {
+                const updated = cards.filter(c => c.id !== cardId);
+                setCards(updated); saveToLocalStorage(folders, sets, updated);
+                showToast("Card permanently deleted!");
+                setConfirmDialog({ isOpen: false, message: '', onConfirm: null });
+            };
+
+            const toggleCardLearned = (card) => {
+                const updated = cards.map(c => c.id === card.id ? { ...c, isLearned: !card.isLearned } : c);
+                setCards(updated); saveToLocalStorage(folders, sets, updated);
+            };
+
+            const handleAIImport = async () => {
+                if (!importRawText.trim() || !activeSetId) return;
+                setIsAiImporting(true);
+                
+                let systemInstruction = "You are a professional German teacher. Extract vocabulary from the user's text and create a valid JSON array for flashcards.";
+                let prompt = `Extract German vocabulary from the following text:\n---\n${importRawText}\n---`;
+                if (customPromptNote.trim()) prompt += `\n\n📌 SPECIAL INSTRUCTIONS:\n"${customPromptNote.trim()}"`;
+                
+                let verbInstructions = [];
+                if (aiVerbFormPerfekt) verbInstructions.push("Partizip Perfekt (e.g. 'gemacht')");
+                if (aiVerbFormPrasens) verbInstructions.push("Partizip Präsens (e.g. 'machend')");
+
+                if (verbInstructions.length > 0) {
+                    prompt += `\n\nFor any German verb extracted, you MUST also provide: ${verbInstructions.join(' and ')}. Set hasPartizipPerfekt/hasPartizipPrasens to true accordingly.`;
+                }
+
+                prompt += `\n\nReturn a JSON array of objects with keys:
+                - "german": base word without article (preserve exact casing)
+                - "article": der/die/das or empty
+                - "ipa": IPA phonetic transcription
+                - "partOfSpeech": "verb" if verb, "adj" if adjective, "adv" if adverb, or empty string "" for noun/other
+                - "plural": plural form for nouns or empty string
+                - "english": meaning/translation
+                - "example": German example sentence
+                - "exampleTranslation": translation of the example sentence
+                - "hasPartizipPerfekt": ${aiVerbFormPerfekt ? 'true for verbs if available' : 'false'}
+                - "partizipPerfekt": Partizip Perfekt form if verb and enabled, else empty string
+                - "hasPartizipPrasens": ${aiVerbFormPrasens ? 'true for verbs if available' : 'false'}
+                - "partizipPrasens": Partizip Präsens form if verb and enabled, else empty string`;
+
+                const schema = {
+                    type: "ARRAY", items: { type: "OBJECT", properties: {
+                        german: { type: "STRING" }, article: { type: "STRING" }, ipa: { type: "STRING" }, 
+                        partOfSpeech: { type: "STRING" }, plural: { type: "STRING" }, english: { type: "STRING" }, 
+                        example: { type: "STRING" }, exampleTranslation: { type: "STRING" },
+                        hasPartizipPerfekt: { type: "BOOLEAN" }, partizipPerfekt: { type: "STRING" },
+                        hasPartizipPrasens: { type: "BOOLEAN" }, partizipPrasens: { type: "STRING" }
+                    }, required: ["german", "english"] }
+                };
+
+                try {
+                    const rawJson = await callGeminiAPI(prompt, systemInstruction, schema, userApiKey);
+                    let parsedArray;
+                    try {
+                        parsedArray = JSON.parse(rawJson);
+                    } catch (parseErr) {
+                        throw new Error("AI returned invalid JSON format. Please try again.");
+                    }
+                    
+                    if (Array.isArray(parsedArray) && parsedArray.length > 0) {
+                        const today = getTodayString();
+                        const newCreatedCards = parsedArray.map((item, index) => {
+                            let pos = getNormalizedPOS(item.partOfSpeech) || '';
+                            return {
+                                id: 'card_' + Date.now() + '_' + index, setId: activeSetId, 
+                                german: item.german || '', article: item.article || '', ipa: item.ipa || '', 
+                                partOfSpeech: pos, plural: item.plural || '',
+                                vietnamese: item.english || '', example: item.example || '', 
+                                exampleTranslation: item.exampleTranslation || '', imageUrl: '',
+                                hasPartizipPerfekt: aiVerbFormPerfekt && pos === 'verb' ? Boolean(item.hasPartizipPerfekt) : false,
+                                partizipPerfekt: aiVerbFormPerfekt && pos === 'verb' ? (item.partizipPerfekt || '') : '',
+                                hasPartizipPrasens: aiVerbFormPrasens && pos === 'verb' ? Boolean(item.hasPartizipPrasens) : false,
+                                partizipPrasens: aiVerbFormPrasens && pos === 'verb' ? (item.partizipPrasens || '') : '',
+                                createdAt: today, isLearned: false, inTrash: false
+                            };
+                        });
+                        const updated = [...cards, ...newCreatedCards];
+                        setCards(updated); saveToLocalStorage(folders, sets, updated);
+                        showToast(`Successfully created ${parsedArray.length} cards via AI!`);
+                        setIsAiImportModalOpen(false); setImportRawText('');
+                    } else {
+                        showToast("AI could not find valid vocabulary.");
+                    }
+                } catch (err) {
+                    showToast(err.message || "An unexpected error occurred during AI Import.");
+                } finally { setIsAiImporting(false); }
+            };
+
+            const startStudy = () => {
+                if (!activeSetId) return;
+                const setCardsList = activeCards.filter(c => c.setId === activeSetId);
+                if (setCardsList.length === 0) { showToast("This set is empty!"); return; }
+                let unlearnedCards = setCardsList.filter(c => !c.isLearned);
+                let cardsToStudy = unlearnedCards.length > 0 ? unlearnedCards : setCardsList;
+                
+                const shuffled = fisherYatesShuffle(cardsToStudy);
+                setStudySession({
+                    cards: shuffled,
+                    history: [0],
+                    historyIndex: 0,
+                    isFlipped: false,
+                    showResult: false,
+                    direction: 'de-en'
+                });
+                setCurrentView('study');
+            };
+
+            const nextStudyCard = (markAsLearned) => {
+                if (studySession.cards.length === 0) return;
+                const currentDeckIndex = studySession.history[studySession.historyIndex];
+                const currentCard = studySession.cards[currentDeckIndex];
+                
+                if (markAsLearned && currentCard && !currentCard.isLearned) {
+                    toggleCardLearned(currentCard);
+                }
+
+                if (studySession.historyIndex < studySession.history.length - 1) {
+                    setStudySession(prev => ({
+                        ...prev,
+                        isFlipped: false,
+                        historyIndex: prev.historyIndex + 1
+                    }));
+                } else {
+                    const nextDeckIndex = currentDeckIndex + 1;
+                    if (nextDeckIndex < studySession.cards.length) {                        setStudySession(prev => ({
+                            ...prev,
+                            isFlipped: false,
+                            history: [...prev.history, nextDeckIndex],
+                            historyIndex: prev.historyIndex + 1
+                        }));
+                    } else {
+                        setStudySession(prev => ({ ...prev, showResult: true }));
+                    }
+                }
+            };
+
+            const prevStudyCard = () => {
+                if (studySession.historyIndex > 0) {
+                    setStudySession(prev => ({
+                        ...prev,
+                        isFlipped: false,
+                        historyIndex: prev.historyIndex - 1
+                    }));
+                }
+            };
+
+            const toggleStudyDirection = () => {
+                setStudySession(prev => ({
+                    ...prev,
+                    direction: prev.direction === 'en-de' ? 'de-en' : 'en-de',
+                    isFlipped: false
+                }));
+            };
+
+            const buildQuizQuestions = (targetCardsList, allSetCards, config, isTest2 = false, retestCardIds = []) => {
+                let pool = [];
+                let cardsToProcess = [...targetCardsList];
+
+                if (isTest2 && retestCardIds.length > 0) cardsToProcess = targetCardsList.filter(c => retestCardIds.includes(c.id));
+                if (cardsToProcess.length === 0) cardsToProcess = targetCardsList;
+
+                const requestedFormat = config.answerFormat || 'mixed';
+
+                cardsToProcess.forEach(card => {
+                    const de = card.german.trim();
+                    const en = card.vietnamese.trim();
+                    const fullDe = card.article ? `${card.article} ${de}` : de;
+                    
+                    let possibleTypes = [];
+
+                    if (config.quizMode === 'gender' && card.article) possibleTypes = ['gender'];
+                    else if (config.quizMode === 'plural' && card.plural) possibleTypes = ['plural'];
+                    else if (config.quizMode === 'spelling') possibleTypes = ['spelling'];
+                    else if (config.quizMode === 'mixed') {
+                        possibleTypes = ['translation', 'spelling'];
+                        if (card.article && ['der', 'die', 'das'].includes(card.article.toLowerCase())) possibleTypes.push('gender');
+                        if (card.plural && card.plural.trim() !== '') possibleTypes.push('plural');
+                    } else {
+                        possibleTypes = ['spelling'];
+                    }
+
+                    const chosenType = possibleTypes[Math.floor(Math.random() * possibleTypes.length)] || 'spelling';
+                    const qId = chosenType + '_' + card.id + '_' + Math.random().toString(36).substring(2, 7);
+
+                    let finalFormat = requestedFormat;
+                    if (requestedFormat === 'mixed') {
+                        finalFormat = Math.random() > 0.5 ? 'multiple_choice' : 'written';
+                    }
+
+                    let qObj = {
+                        id: qId, cardId: card.id, type: chosenType, format: finalFormat, cardObj: card
+                    };
+
+                    if (chosenType === 'plural') {
+                        qObj.title = 'Exercise: Guess Noun Plural';
+                        qObj.prompt = `Plural form for:\n"${fullDe}" ➔ ________`;
+                        qObj.subtext = `Translation: ${en}`;
+                        qObj.correctAnswer = card.plural.trim();
+                        qObj.altCorrectAnswer = card.plural.replace(/^(der|die|das)\s+/i, '').trim();
+                        qObj.germanSpeech = de;
+                        if (finalFormat === 'multiple_choice') {
+                            const distractors = getDistractors(card.plural.trim(), allSetCards, c => c.plural, [`die ${de}s`, `die ${de}en`, `die ${de}e`]);
+                            qObj.options = fisherYatesShuffle([card.plural.trim(), ...distractors]);
+                        }
+                    } else if (chosenType === 'spelling') {
+                        qObj.title = 'Exercise: Spelling';
+                        qObj.prompt = `German word for: "${en}"`;
+                        qObj.subtext = card.article ? `(Include article if noun)` : '';
+                        qObj.correctAnswer = fullDe;
+                        qObj.altCorrectAnswer = de;
+                        qObj.germanSpeech = fullDe;
+                        if (finalFormat === 'multiple_choice') {
+                            const distractors = getDistractors(fullDe, allSetCards, c => (c.article ? c.article + ' ' : '') + c.german);
+                            qObj.options = fisherYatesShuffle([fullDe, ...distractors]);
+                        }
+                    } else if (chosenType === 'gender') {
+                        qObj.title = 'Exercise: Guess Noun Gender';
+                        qObj.prompt = `___ ${de}`;
+                        qObj.subtext = `Translation: ${en}`;
+                        qObj.correctAnswer = card.article.toLowerCase();
+                        qObj.germanSpeech = fullDe;
+                        if (finalFormat === 'multiple_choice') {
+                            qObj.options = ['der', 'die', 'das'];
+                        }
+                    } else if (chosenType === 'translation') {
+                        const dir = Math.random() > 0.5 ? 'de_en' : 'en_de';
+                        if (dir === 'de_en') {
+                            qObj.title = 'Translation (DE ➔ EN)';
+                            qObj.prompt = `Meaning of "${fullDe}"?`;
+                            qObj.correctAnswer = en;
+                            qObj.germanSpeech = fullDe;
+                            if (finalFormat === 'multiple_choice') {
+                                const distractors = getDistractors(en, allSetCards, c => c.vietnamese);
+                                qObj.options = fisherYatesShuffle([en, ...distractors]);
+                            }
+                        } else {
+                            qObj.title = 'Translation (EN ➔ DE)';
+                            qObj.prompt = `German word for "${en}"?`;
+                            qObj.correctAnswer = fullDe;
+                            qObj.altCorrectAnswer = de;
+                            qObj.germanSpeech = fullDe;
+                            if (finalFormat === 'multiple_choice') {
+                                const distractors = getDistractors(fullDe, allSetCards, c => (c.article ? c.article + ' ' : '') + c.german);
+                                qObj.options = fisherYatesShuffle([fullDe, ...distractors]);
+                            }
+                        }
+                    }
+                    pool.push(qObj);
+                });
+
+                return fisherYatesShuffle(pool);
+            };
+
+            const generateFillBlankAI = async (targetCardsList, difficulty, requestedFormat = 'mixed', allSetCards) => {
+                const wordsList = targetCardsList.map(c => c.german).join(", ");
+                let diffInstruction = 'natural context, slightly longer.';
+                if (difficulty === 'easy') diffInstruction = 'simple sentence, clear context.';
+                if (difficulty === 'hard') diffInstruction = 'complex context, advanced grammar.';
+                
+                const prompt = `You are a German teacher creating Fill-in-the-Blank exercises.
+                Difficulty: ${difficulty.toUpperCase()}. ${diffInstruction}
+                
+                For EACH of the following words, create exactly ONE sentence where that exact word is missing.
+                Words list: ${wordsList}
+                
+                CRITICAL RULES:
+                1. Replace the target word in the German sentence EXACTLY with "________" (8 underscores).
+                2. Do not include the answer in the sentence.
+                3. The grammar must perfectly match the correct answer.
+                
+                Output JSON Array format:
+                [
+                  {
+                    "germanWord": "the exact word from the list",
+                    "sentenceWithBlank": "Ich muss mich heute ________.",
+                    "correctAnswer": "entscheiden",
+                    "englishTranslation": "I have to make a decision today."
+                  }
+                ]`;
+
+                const schema = {
+                    type: "ARRAY", items: {
+                        type: "OBJECT", properties: {
+                            germanWord: {type: "STRING"}, sentenceWithBlank: {type: "STRING"}, correctAnswer: {type: "STRING"}, englishTranslation: {type: "STRING"}
+                        }, required: ["germanWord", "sentenceWithBlank", "correctAnswer", "englishTranslation"]
+                    }
+                };
+
+                const rawJson = await callGeminiAPI(prompt, "", schema, userApiKey);
+                const parsed = JSON.parse(rawJson);
+                
+                let pool = [];
+                targetCardsList.forEach(card => {
+                    const de = card.german.trim();
+                    const aiData = parsed.find(item => item.germanWord.toLowerCase() === de.toLowerCase() || item.correctAnswer.toLowerCase() === de.toLowerCase());
+                    
+                    let finalFormat = requestedFormat;
+                    if (requestedFormat === 'mixed') finalFormat = Math.random() > 0.5 ? 'multiple_choice' : 'written';
+                    
+                    let qObj = {
+                        id: 'fill_' + card.id + '_' + Math.random().toString(36).substring(2, 7),
+                        cardId: card.id, type: 'fill_blank', format: finalFormat,
+                        title: 'Exercise: Fill in the Blank',
+                        cardObj: card
+                    };
+                    
+                    if (aiData) {
+                        qObj.prompt = aiData.sentenceWithBlank;
+                        qObj.subtext = `Translation: ${aiData.englishTranslation}`;
+                        qObj.correctAnswer = aiData.correctAnswer;
+                        qObj.germanSpeech = aiData.sentenceWithBlank.replace('________', aiData.correctAnswer);
+                    } else {
+                        qObj.prompt = `________ ist wichtig.`;
+                        qObj.subtext = `Translation: ${card.vietnamese} is important.`;
+                        qObj.correctAnswer = de;
+                        qObj.germanSpeech = `${de} ist wichtig.`;
+                    }
+
+                    if (finalFormat === 'multiple_choice') {
+                        const distractors = getDistractors(qObj.correctAnswer, allSetCards, c => c.german);
+                        qObj.options = fisherYatesShuffle([qObj.correctAnswer, ...distractors]);
+                    }
+                    
+                    pool.push(qObj);
+                });
+                return fisherYatesShuffle(pool);
+            };
+
+            const generateCustomPromptAIExercise = async (userPromptText, currentSetCards) => {
+                const currentVocabContext = currentSetCards.map(c => 
+                    `${c.article ? c.article + ' ' : ''}${c.german}${c.plural ? ' (Plural: ' + c.plural + ')' : ''} = ${c.vietnamese}`
+                ).join('; ');
+
+                const systemInstruction = `You are an expert German language tutor. Create an interactive German exercise set based on the user's custom prompt instructions.
+VOCABULARY RULE: If the user's prompt requires or implies vocabulary practice, you MUST primarily use vocabulary from the CURRENT UNIT VOCABULARY provided below. Do NOT randomly take target vocabulary from other units unless explicitly requested by the user prompt.`;
+
+                const promptText = `User Prompt Instructions: "${userPromptText.trim()}"
+
+CURRENT UNIT VOCABULARY:
+[${currentVocabContext || 'No unit vocabulary specified'}]
+
+Generate an interactive German exercise matching the user prompt.
+Return JSON format with:
+- "title": A clear title for this custom exercise (e.g., "Accusative Prepositions Practice")
+- "feedbackTitle": Short category name
+- "questions": Array of question objects.
+Each question object MUST have:
+- "id": string unique id
+- "title": short question header/type
+- "prompt": clear question text
+- "subtext": translation or helpful context/hint (optional)
+- "format": "multiple_choice" or "written"
+- "options": array of string answer choices (if format is multiple_choice)
+- "correctAnswer": exact string of the correct answer
+- "altCorrectAnswer": optional alternative acceptable text
+- "explanation": clear, helpful explanation of the grammar rule and correction
+- "germanSpeech": German phrase for speech audio playback (optional)`;
+
+                const schema = {
+                    type: "OBJECT",
+                    properties: {
+                        title: { type: "STRING" },
+                        feedbackTitle: { type: "STRING" },
+                        questions: {
+                            type: "ARRAY",
+                            items: {
+                                type: "OBJECT",
+                                properties: {
+                                    id: { type: "STRING" },
+                                    title: { type: "STRING" },
+                                    prompt: { type: "STRING" },
+                                    subtext: { type: "STRING" },
+                                    format: { type: "STRING" },
+                                    options: { type: "ARRAY", items: { type: "STRING" } },
+                                    correctAnswer: { type: "STRING" },
+                                    altCorrectAnswer: { type: "STRING" },
+                                    explanation: { type: "STRING" },
+                                    germanSpeech: { type: "STRING" }
+                                },
+                                required: ["id", "prompt", "format", "correctAnswer"]
+                            }
+                        }
+                    },
+                    required: ["questions"]
+                };
+
+                const rawJson = await callGeminiAPI(promptText, systemInstruction, schema, userApiKey);
+                let parsed;
+                try {
+                    parsed = JSON.parse(rawJson);
+                } catch (jsonErr) {
+                    throw new Error("AI returned invalid JSON response. Please try again with a different prompt.");
+                }
+
+                if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+                    throw new Error("AI failed to generate valid exercise questions. Please try again.");
+                }
+
+                return parsed.questions.map((q, idx) => {
+                    const fmt = (q.format === 'written') ? 'written' : 'multiple_choice';
+                    let options = Array.isArray(q.options) ? q.options : [];
+                    if (fmt === 'multiple_choice') {
+                        if (!options.some(o => o.toLowerCase() === q.correctAnswer.toLowerCase())) {
+                            options.push(q.correctAnswer);
+                        }
+                        if (options.length < 2) {
+                            options.push("A", "B", "C");
+                        }
+                        options = fisherYatesShuffle(options);
+                    }
+                    return {
+                        id: q.id || `ai_q_${idx}_${Date.now()}`,
+                        cardId: null,
+                        type: 'ai_exercise',
+                        format: fmt,
+                        title: q.title || parsed.title || 'AI Exercise Question',
+                        prompt: q.prompt,
+                        subtext: q.subtext || '',
+                        options: options,
+                        correctAnswer: q.correctAnswer,
+                        altCorrectAnswer: q.altCorrectAnswer || '',
+                        explanation: q.explanation || '',
+                        germanSpeech: q.germanSpeech || q.prompt
+                    };
+                });
+            };
+
+            const startQuiz = async (isTest2 = false, retestCardIds = []) => {
+                if (!activeSetId) return;
+                const setCardsList = activeCards.filter(c => c.setId === activeSetId);
+                if (setCardsList.length === 0) { showToast("This set is empty!"); return; }
+
+                setIsQuizConfigOpen(false);
+                let baseQuestions = [];
+
+                if (quizConfig.quizMode === 'ai_prompt') {
+                    if (!userApiKey) {
+                        showToast("Gemini API Key is required for AI Exercises!");
+                        setIsApiKeyModalOpen(true);
+                        return;
+                    }
+                    if (!quizConfig.customPrompt || !quizConfig.customPrompt.trim()) {
+                        showToast("Please describe the exercise you want in the prompt box!");
+                        setIsQuizConfigOpen(true);
+                        return;
+                    }
+
+                    setQuizState(prev => ({...prev, isLoadingAI: true, questions: []}));
+                    setCurrentView('quiz_play');
+
+                    try {
+                        baseQuestions = await generateCustomPromptAIExercise(quizConfig.customPrompt, setCardsList);
+                    } catch (e) {
+                        showToast(e.message || "Failed to generate AI Exercise.");
+                        setCurrentView('set');
+                        setQuizState(prev => ({...prev, isLoadingAI: false}));
+                        return;
+                    }
+                } else if (quizConfig.quizMode === 'fill_blank') {
+                    if (!userApiKey) {
+                        showToast("API Key required for AI Fill-in-the-Blank!");
+                        setIsApiKeyModalOpen(true);
+                        return;
+                    }
+                    setQuizState(prev => ({...prev, isLoadingAI: true, questions: []}));
+                    setCurrentView('quiz_play');
+                    
+                    let cardsToProcess = isTest2 ? setCardsList.filter(c => retestCardIds.includes(c.id)) : setCardsList;
+                    try {
+                        baseQuestions = await generateFillBlankAI(cardsToProcess, quizConfig.difficulty, quizConfig.answerFormat, activeCards);
+                    } catch (e) {
+                        showToast(e.message || "Failed to generate AI Questions.");
+                        setCurrentView('set');
+                        setQuizState(prev => ({...prev, isLoadingAI: false}));
+                        return;
+                    }
+                } else {
+                    baseQuestions = buildQuizQuestions(setCardsList, activeCards, quizConfig, isTest2, retestCardIds);
+                }
+
+                if (baseQuestions.length === 0) { showToast("Could not generate questions!"); return; }
+
+                setQuizState({ questions: baseQuestions, currentIndex: 0, userAnswers: {}, isSubmitted: false, score: 0, wrongQuestions: [], answeredQuestions: [], isTest2: isTest2, isLoadingAI: false });
+                setWrittenInput(''); setCurrentCheckResult(null); setCurrentView('quiz_play');
+            };
+
+            const startSentenceDictation = async () => {
+                if (!activeSetId) {
+                    showToast("Please select a study unit/set first!");
+                    return;
+                }
+                const setCardsList = activeCards.filter(c => c.setId === activeSetId);
+                if (setCardsList.length === 0) {
+                    showToast("This unit has no vocabulary cards!");
+                    return;
+                }
+                if (!userApiKey) {
+                    showToast("Gemini API Key is required for AI Sentence Dictation!");
+                    setIsApiKeyModalOpen(true);
+                    return;
+                }
+
+                setIsListeningDictationModalOpen(false);
+                setListeningDictationState({
+                    mode: 'sentence',
+                    wordSubMode: null,
+                    questions: [],
+                    currentIndex: 0,
+                    userAnswer: '',
+                    playbackSpeed: 1.0,
+                    isSubmitted: false,
+                    score: 0,
+                    answeredQuestions: [],
+                    wrongQuestions: [],
+                    isLoadingAI: true
+                });
+                setCurrentView('listening_dictation_play');
+
+                const vocabContext = setCardsList.map(c => `${c.article ? c.article + ' ' : ''}${c.german} (${c.vietnamese})`).join(', ');
+
+                const prompt = `You are an expert German teacher. Create 6 natural, grammatically correct German sentences for a Listening & Dictation exercise.
+CRITICAL RULES:
+1. You MUST use vocabulary from this unit: [${vocabContext}].
+2. Each sentence must naturally incorporate one or more words from the unit vocabulary.
+3. Keep sentences appropriate for German learners (A1-A2 level).
+
+Return JSON format with an array of objects having:
+- "germanSentence": exact German sentence to be dictated
+- "englishTranslation": English translation of the sentence
+- "targetWords": array of words from the unit used in this sentence`;
+
+                const schema = {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            germanSentence: { type: "STRING" },
+                            englishTranslation: { type: "STRING" },
+                            targetWords: { type: "ARRAY", items: { type: "STRING" } }
+                        },
+                        required: ["germanSentence", "englishTranslation"]
+                    }
+                };
+
+                try {
+                    const rawJson = await callGeminiAPI(prompt, "You are a helpful German teaching assistant.", schema, userApiKey);
+                    const parsed = JSON.parse(rawJson);
+                    if (!Array.isArray(parsed) || parsed.length === 0) {
+                        throw new Error("AI generated empty sentences.");
+                    }
+
+                    const questions = parsed.map((item, idx) => ({
+                        id: `sent_dict_${idx}_${Date.now()}`,
+                        audioText: item.germanSentence,
+                        audioLang: 'de-DE',
+                        correctAnswer: item.germanSentence,
+                        englishTranslation: item.englishTranslation,
+                        targetWords: item.targetWords || []
+                    }));
+
+                    setListeningDictationState(prev => ({
+                        ...prev,
+                        questions: questions,
+                        currentIndex: 0,
+                        isLoadingAI: false
+                    }));
+                    setWrittenInput('');
+                    setDictationCheckResult(null);
+                } catch (err) {
+                    showToast(err.message || "Failed to generate sentence dictation.");
+                    setCurrentView('set');
+                    setListeningDictationState(prev => ({ ...prev, isLoadingAI: false }));
+                }
+            };
+
+            const startWordDictation = (subMode) => {
+                if (!activeSetId) {
+                    showToast("Please select a study unit/set first!");
+                    return;
+                }
+                const setCardsList = activeCards.filter(c => c.setId === activeSetId);
+                if (setCardsList.length === 0) {
+                    showToast("This unit has no vocabulary cards!");
+                    return;
+                }
+
+                setIsListeningDictationModalOpen(false);
+                const shuffledCards = fisherYatesShuffle(setCardsList);
+
+                const questions = shuffledCards.map((card, idx) => {
+                    const deWord = card.article ? `${card.article} ${card.german}` : card.german;
+                    const enMeaning = card.vietnamese;
+
+                    let audioText = deWord;
+                    let audioLang = 'de-DE';
+                    let correctAnswer = deWord;
+                    let promptLabel = '';
+
+                    if (subMode === 'de_de') {
+                        audioText = deWord;
+                        audioLang = 'de-DE';
+                        correctAnswer = deWord;
+                        promptLabel = 'German Audio ➔ German Spelling';
+                    } else if (subMode === 'en_de') {
+                        audioText = enMeaning;
+                        audioLang = 'en-US';
+                        correctAnswer = deWord;
+                        promptLabel = 'English Audio ➔ German Spelling';
+                    } else if (subMode === 'de_en') {
+                        audioText = deWord;
+                        audioLang = 'de-DE';
+                        correctAnswer = enMeaning;
+                        promptLabel = 'German Audio ➔ English Meaning';
+                    }
+
+                    return {
+                        id: `word_dict_${card.id}_${idx}`,
+                        card: card,
+                        audioText: audioText,
+                        audioLang: audioLang,
+                        correctAnswer: correctAnswer,
+                        altCorrectAnswer: card.german,
+                        englishTranslation: enMeaning,
+                        germanWord: deWord,
+                        promptLabel: promptLabel
+                    };
+                });
+
+                setListeningDictationState({
+                    mode: 'word',
+                    wordSubMode: subMode,
+                    questions: questions,
+                    currentIndex: 0,
+                    userAnswer: '',
+                    playbackSpeed: 1.0,
+                    isSubmitted: false,
+                    score: 0,
+                    answeredQuestions: [],
+                    wrongQuestions: [],
+                    isLoadingAI: false
+                });
+                setWrittenInput('');
+                setDictationCheckResult(null);
+                setCurrentView('listening_dictation_play');
+            };
+
+            const normalizeText = (txt) => {
+                if (!txt) return '';
+                return txt.toLowerCase().trim().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "").replace(/\s+/g, " ");
+            };
+
+            const handleDictationAnswerSubmit = (answerValue) => {
+                if (dictationCheckResult) return;
+                const q = listeningDictationState.questions[listeningDictationState.currentIndex];
+                const uAns = (answerValue || '').trim();
+                if (!uAns) {
+                    showToast("Please type your answer!");
+                    return;
+                }
+
+                const cNorm = normalizeText(q.correctAnswer);
+                const altNorm = normalizeText(q.altCorrectAnswer || '');
+                const uNorm = normalizeText(uAns);
+
+                const isRight = (uNorm === cNorm) || (altNorm && uNorm === altNorm);
+
+                setListeningDictationState(prev => {
+                    const alreadyAnswered = prev.answeredQuestions.some(item => item.id === q.id);
+                    const newAnswered = alreadyAnswered ? prev.answeredQuestions : [...prev.answeredQuestions, { ...q, userAnswer: uAns, isRight }];
+                    let newScore = prev.score;
+                    let newWrong = [...prev.wrongQuestions];
+                    if (!alreadyAnswered) {
+                        if (isRight) newScore++;
+                        else newWrong.push({ ...q, userAnswer: uAns });
+                    }
+                    return {
+                        ...prev,
+                        score: newScore,
+                        answeredQuestions: newAnswered,
+                        wrongQuestions: newWrong
+                    };
+                });
+
+                setDictationCheckResult(isRight ? 'correct' : 'wrong');
+            };
+
+            const handleNextDictationQuestion = () => {
+                if (listeningDictationState.currentIndex + 1 < listeningDictationState.questions.length) {
+                    setListeningDictationState(prev => ({ ...prev, currentIndex: prev.currentIndex + 1 }));
+                    setWrittenInput('');
+                    setDictationCheckResult(null);
+                } else {
+                    setListeningDictationState(prev => ({ ...prev, isSubmitted: true }));
+                    setCurrentView('listening_dictation_summary');
+                }
+            };
+
+            const handleAnswerSubmit = (answerValue) => {
+                if (currentCheckResult) return;
+                
+                const currentQ = quizState.questions[quizState.currentIndex];
+                let finalAnswer = typeof answerValue === 'string' ? answerValue.trim() : answerValue;
+                
+                if (!finalAnswer) { showToast("Please provide an answer!"); return; }
+
+                const cAns = normalizeText(currentQ.correctAnswer);
+                const altAns = normalizeText(currentQ.altCorrectAnswer || '');
+                const uAns = normalizeText(finalAnswer);
+
+                const isRight = (uAns === cAns) || (altAns && uAns === altAns);
+
+                setQuizState(prev => {
+                    const newAnswers = { ...prev.userAnswers, [currentQ.id]: finalAnswer };
+                    const alreadyAnswered = prev.answeredQuestions.some(q => q.id === currentQ.id);
+                    const newAnswered = alreadyAnswered ? prev.answeredQuestions : [...prev.answeredQuestions, currentQ];
+                    
+                    let newScore = prev.score;
+                    let newWrong = [...prev.wrongQuestions];
+                    if (!alreadyAnswered) {
+                        if (isRight) newScore++; 
+                        else newWrong.push(currentQ);
+                    }
+
+                    return { ...prev, userAnswers: newAnswers, score: newScore, wrongQuestions: newWrong, answeredQuestions: newAnswered };
+                });
+
+                setCurrentCheckResult(isRight ? 'correct' : 'wrong');
+            };
+
+            const handleNextQuizQuestion = () => {
+                if (quizState.currentIndex + 1 < quizState.questions.length) {
+                    setQuizState(prev => ({ ...prev, currentIndex: prev.currentIndex + 1 }));
+                    setWrittenInput(''); setCurrentCheckResult(null);
+                } else {
+                    setQuizState(prev => ({ ...prev, isSubmitted: true }));
+                    setCurrentView('quiz_summary');
+                }
+            };
+
+            const activeFolders = folders.filter(f => !f.inTrash);
+            const activeSets = sets.filter(s => !s.inTrash);
+            const activeCards = cards.filter(c => !c.inTrash);
+            const trashedFolders = folders.filter(f => f.inTrash);
+            const trashedSets = sets.filter(s => s.inTrash);
+            const trashedCards = cards.filter(c => c.inTrash);
+            const currentFolder = activeFolders.find(f => f.id === activeFolderId);
+            const currentSet = activeSets.find(s => s.id === activeSetId);
+
+            return (
+                <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col md:flex-row font-sans antialiased">
+                    <input type="file" ref={fileInputRef} onChange={handleImportJSON} accept=".json" className="hidden" />
+
+                    {/* Toast Notification */}
+                    {toastMessage && (
+                        <div className="fixed top-5 right-5 z-50 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 animate-bounce">
+                            <Icons.Sparkles /> <span className="font-medium text-sm">{toastMessage}</span>
+                        </div>
+                    )}
+
+                    <aside className={`fixed md:static inset-y-0 left-0 z-40 w-72 bg-slate-950 border-r border-slate-800 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+                        <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <span className="text-2xl">🇩🇪</span>
+                                <div>
+                                    <h1 className="font-bold text-lg text-amber-400 leading-tight">Deutsch AI</h1>
+                                    <p className="text-xs text-slate-400">Learn & Practice</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setSidebarOpen(false)} className="md:hidden p-2 text-slate-400 hover:text-white rounded-lg"><Icons.Cross /></button>
+                        </div>
+
+                        <nav className="flex-1 overflow-y-auto p-4 space-y-2">
+                            <button onClick={() => { setCurrentView('dashboard'); setActiveFolderId(null); setActiveSetId(null); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition-all ${currentView === 'dashboard' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}>
+                                <Icons.Home /> Home & Folders
+                            </button>
+                            <button onClick={() => { setCurrentView('trash'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition-all ${currentView === 'trash' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}>
+                                <Icons.Trash /> Trash ({trashedFolders.length + trashedSets.length + trashedCards.length})
+                            </button>
+
+                            <div className="pt-4 border-t border-slate-800/80 space-y-1">
+                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2">Data &amp; Settings</span>
+                                <button onClick={exportDataJSON} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-400 hover:text-amber-400 hover:bg-slate-900 rounded-lg transition-colors"><Icons.Download /> Export JSON (Backup)</button>
+                                <button onClick={() => fileInputRef.current && fileInputRef.current.click()} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-400 hover:text-emerald-400 hover:bg-slate-900 rounded-lg transition-colors"><Icons.Upload /> Import JSON (Restore)</button>
+                                <button onClick={() => setIsApiKeyModalOpen(true)} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-400 hover:text-amber-400 hover:bg-slate-900 rounded-lg transition-colors"><Icons.Key /> Settings &amp; API Key</button>
+                            </div>
+
+                            <div className="pt-4 mt-2 border-t border-slate-800/80">
+                                <div className="flex items-center justify-between px-2 mb-2">
+                                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">My Folders</span>
+                                    <button onClick={() => { setEditingFolder(null); setFolderForm({ name: '', description: '' }); setIsFolderModalOpen(true); }} className="p-1 hover:bg-slate-800 text-amber-400 rounded-lg transition-colors" title="Create New Folder"><Icons.Plus /></button>
+                                </div>
+                                <div className="space-y-1">
+                                    {activeFolders.length === 0 ? <p className="text-xs text-slate-500 px-2 py-1 italic">No folders yet</p> : activeFolders.map(f => (
+                                        <SidebarFolderItem key={f.id} folder={f} countSets={activeSets.filter(s => s.folderId === f.id).length} isSelected={activeFolderId === f.id && (currentView === 'folder' || currentView === 'set' || currentView === 'study' || currentView === 'quiz_play' || currentView === 'quiz_summary' || currentView === 'listening_dictation_play' || currentView === 'listening_dictation_summary')} onSelect={() => { setActiveFolderId(f.id); setActiveSetId(null); setCurrentView('folder'); setSidebarOpen(false); }} onLongPressDelete={() => handleLongPressDeleteFolder(f)} />
+                                    ))}
+                                </div>
+                            </div>
+                        </nav>
+                    </aside>
+
+                    {/* Workspace Header & Main Content */}
+                    <div className="flex-1 flex flex-col min-w-0">
+                        <header className="h-16 border-b border-slate-800 bg-slate-950/80 backdrop-blur px-4 md:px-8 flex items-center justify-between sticky top-0 z-30">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                                <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 -ml-2 text-slate-400 hover:text-white"><Icons.Menu /></button>
+                                <div className="flex items-center gap-2 text-sm text-slate-400 overflow-x-auto whitespace-nowrap scrollbar-hide py-2">
+                                    <button onClick={() => { setCurrentView('dashboard'); setActiveFolderId(null); setActiveSetId(null); }} className="hover:text-amber-400 flex items-center gap-1"><Icons.Home /> Home</button>
+                                    {currentFolder && <><span>/</span><button onClick={() => { setCurrentView('folder'); setActiveSetId(null); }} className="hover:text-amber-400">{currentFolder.name}</button></>}
+                                    {currentSet && <><span>/</span><span className="text-white font-medium">{currentSet.title}</span></>}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setIsApiKeyModalOpen(true)} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-semibold rounded-lg transition-colors border border-slate-700">
+                                    <Icons.Key /> API Key
+                                </button>
+                            </div>
+                        </header>
+
+                        <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+                            {currentView === 'dashboard' && (
+                                <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-amber-500/10 via-slate-800/40 to-slate-800/20 border border-amber-500/20 p-6 rounded-3xl">
+                                        <div>
+                                            <h2 className="text-2xl font-extrabold text-white mb-1">Welcome to Deutsch AI 🇩🇪</h2>
+                                            <p className="text-sm text-slate-400">Master German vocabulary with AI-powered study cards, phonetics, and interactive exercises.</p>
+                                        </div>
+                                        <button onClick={() => { setEditingFolder(null); setFolderForm({ name: '', description: '' }); setIsFolderModalOpen(true); }} className="px-5 py-3 bg-amber-500 text-slate-950 font-bold text-sm rounded-xl hover:bg-amber-400 transition-colors flex items-center gap-2 shadow-lg shadow-amber-500/10">
+                                            <Icons.Plus /> New Folder
+                                        </button>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-lg font-bold text-white flex items-center gap-2"><Icons.Folder /> Folders</h3>
+                                            <span className="text-xs text-slate-500">{activeFolders.length} folders</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {activeFolders.map(f => (
+                                                <FolderGridCard key={f.id} folder={f} folderSetsCount={activeSets.filter(s => s.folderId === f.id).length} onSelect={() => { setActiveFolderId(f.id); setActiveSetId(null); setCurrentView('folder'); }} onEdit={(e) => { e.stopPropagation(); setEditingFolder(f); setFolderForm({ name: f.name, description: f.description }); setIsFolderModalOpen(true); }} onLongPressDelete={() => handleLongPressDeleteFolder(f)} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {currentView === 'folder' && currentFolder && (
+                                <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-800/50 border border-slate-700 p-6 rounded-3xl">
+                                        <div>
+                                            <h2 className="text-2xl font-extrabold text-white mb-1">{currentFolder.name}</h2>
+                                            <p className="text-sm text-slate-400">{currentFolder.description || 'Folder set collection'}</p>
+                                        </div>
+                                        <button onClick={() => { setEditingSet(null); setSetForm({ title: '', description: '', folderId: currentFolder.id }); setIsSetModalOpen(true); }} className="px-5 py-3 bg-amber-500 text-slate-950 font-bold text-sm rounded-xl hover:bg-amber-400 transition-colors flex items-center gap-2 shadow-lg">
+                                            <Icons.Plus /> New Study Set
+                                        </button>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="text-lg font-bold text-white mb-4">Study Sets in {currentFolder.name}</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {activeSets.filter(s => s.folderId === currentFolder.id).map(setItem => (
+                                                <SetGridCard key={setItem.id} setItem={setItem} cardsCount={activeCards.filter(c => c.setId === setItem.id).length} onSelect={() => { setActiveSetId(setItem.id); setCurrentView('set'); }} onEdit={(e) => { e.stopPropagation(); setEditingSet(setItem); setSetForm({ title: setItem.title, description: setItem.description, folderId: setItem.folderId }); setIsSetModalOpen(true); }} onLongPressDelete={() => handleLongPressDeleteSet(setItem)} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {currentView === 'set' && currentSet && (
+                                <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-800/50 border border-slate-700 p-6 rounded-3xl">
+                                        <div>
+                                            <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider mb-1"><Icons.Book /> Study Set</div>
+                                            <h2 className="text-2xl font-extrabold text-white mb-1">{currentSet.title}</h2>
+                                            <p className="text-sm text-slate-400">{currentSet.description}</p>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <button onClick={startStudy} className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl transition-colors flex items-center gap-2 shadow-lg">
+                                                <Icons.Study /> Study Flashcards
+                                            </button>
+                                            <button onClick={() => setIsQuizConfigOpen(true)} className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm rounded-xl transition-colors flex items-center gap-2 shadow-lg">
+                                                <Icons.Quiz /> Quiz / Exercises
+                                            </button>
+                                            <button onClick={() => setIsListeningDictationModalOpen(true)} className="px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition-colors flex items-center gap-2 shadow-lg">
+                                                <Icons.Speaker /> Listen &amp; Dictation
+                                            </button>
+                                            <button onClick={() => setIsAiImportModalOpen(true)} className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm rounded-xl transition-colors flex items-center gap-2 shadow-lg">
+                                                <Icons.Sparkles /> Create Vocabulary with AI
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-lg font-bold text-white flex items-center gap-2"><Icons.Card /> Vocabulary Cards ({activeCards.filter(c => c.setId === currentSet.id).length})</h3>
+                                            <button onClick={() => { setEditingCard(null); setCardForm({ german: '', article: '', ipa: '', partOfSpeech: '', plural: '', vietnamese: '', example: '', exampleTranslation: '', imageUrl: '', hasPartizipPerfekt: false, partizipPerfekt: '', hasPartizipPrasens: false, partizipPrasens: '' }); setIsCardModalOpen(true); }} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 font-semibold text-xs rounded-lg transition-colors flex items-center gap-1.5">
+                                                <Icons.Plus /> Add Card Manually
+                                            </button>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {activeCards.filter(c => c.setId === currentSet.id).length === 0 ? (
+                                                <div className="text-center py-12 bg-slate-800/30 border border-slate-800 rounded-2xl">
+                                                    <p className="text-slate-400 text-sm mb-3">No vocabulary cards in this set yet.</p>
+                                                    <button onClick={() => setIsAiImportModalOpen(true)} className="px-4 py-2 bg-amber-500 text-slate-950 font-bold text-xs rounded-xl inline-flex items-center gap-2">
+                                                        <Icons.Sparkles /> Generate Vocabulary with AI
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                activeCards.filter(c => c.setId === currentSet.id).map(card => (
+                                                    <FlashcardListItem key={card.id} card={card} genderDisplayStyle={genderDisplayStyle} aiVerbFormPerfekt={aiVerbFormPerfekt} aiVerbFormPrasens={aiVerbFormPrasens} onEdit={() => { setEditingCard(card); setCardForm({ german: card.german, article: card.article, ipa: card.ipa, partOfSpeech: card.partOfSpeech, plural: card.plural, vietnamese: card.vietnamese, example: card.example, exampleTranslation: card.exampleTranslation, imageUrl: card.imageUrl, hasPartizipPerfekt: card.hasPartizipPerfekt, partizipPerfekt: card.partizipPerfekt, hasPartizipPrasens: card.hasPartizipPrasens, partizipPrasens: card.partizipPrasens }); setIsCardModalOpen(true); }} onToggleLearned={toggleCardLearned} onLongPressDelete={() => handleLongPressDeleteCard(card)} />
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {currentView === 'study' && (
+                                <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+                                    <div className="flex items-center justify-between">
+                                        <button onClick={() => setCurrentView('set')} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white"><Icons.ArrowLeft /> Back to Set</button>
+                                        <div className="flex items-center gap-3">
+                                            <button onClick={toggleStudyDirection} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg text-amber-400">
+                                                Direction: {studySession.direction === 'de-en' ? 'German ➔ English' : 'English ➔ German'}
+                                            </button>
+                                            <span className="text-xs text-slate-400 font-mono">Card {studySession.historyIndex + 1} of {studySession.cards.length}</span>
+                                        </div>
+                                    </div>
+
+                                    {!studySession.showResult && studySession.cards.length > 0 ? (() => {
+                                        const cardIdx = studySession.history[studySession.historyIndex];
+                                        const currentCard = studySession.cards[cardIdx];
+                                        const isFrontDe = studySession.direction === 'de-en';
+                                        const posTag = getNormalizedPOS(currentCard.partOfSpeech);
+
+                                        return (
+                                            <div className="space-y-6">
+                                                <div 
+                                                    onClick={() => setStudySession(prev => ({ ...prev, isFlipped: !prev.isFlipped }))}
+                                                    className="w-full h-96 bg-slate-800 hover:bg-slate-750 border border-slate-700 rounded-3xl p-8 cursor-pointer flex flex-col justify-between shadow-2xl transition-all transform hover:scale-[1.01] relative overflow-hidden"
+                                                >
+                                                    <div className="flex justify-between items-center text-xs text-slate-400 font-semibold uppercase">
+                                                        <span>{isFrontDe ? (studySession.isFlipped ? 'English Meaning' : 'German Word') : (studySession.isFlipped ? 'German Word' : 'English Meaning')}</span>
+                                                        <span>Click card to flip 🔄</span>
+                                                    </div>
+
+                                                    <div className="text-center my-auto space-y-4">
+                                                        {!studySession.isFlipped ? (
+                                                            isFrontDe ? (
+                                                                <div>
+                                                                    <div className="text-3xl md:text-4xl font-extrabold text-white mb-2">
+                                                                        <GermanWordDisplay card={currentCard} genderDisplayStyle={genderDisplayStyle} aiVerbFormPerfekt={aiVerbFormPerfekt} aiVerbFormPrasens={aiVerbFormPrasens} />
+                                                                    </div>
+                                                                    {currentCard.ipa && <div className="text-sm font-mono text-slate-400">[{currentCard.ipa}]</div>}
+                                                                    {posTag && <div className="mt-1"><span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">{posTag}</span></div>}
+                                                                    {currentCard.plural && currentCard.plural.trim() && <div className="text-sm text-slate-400 mt-1">(Plural: {currentCard.plural.trim()})</div>}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-3xl md:text-4xl font-extrabold text-white">
+                                                                    {currentCard.vietnamese}
+                                                                </div>
+                                                            )
+                                                        ) : (
+                                                            isFrontDe ? (
+                                                                <div className="space-y-2">
+                                                                    <div className="text-3xl md:text-4xl font-extrabold text-emerald-400">
+                                                                        {currentCard.vietnamese}
+                                                                    </div>
+                                                                    {currentCard.example && (
+                                                                        <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800 max-w-md mx-auto">
+                                                                            <p className="text-sm text-slate-200 italic">"{currentCard.example}"</p>
+                                                                            {currentCard.exampleTranslation && <p className="text-xs text-slate-400 mt-1">{currentCard.exampleTranslation}</p>}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div>
+                                                                    <div className="text-3xl md:text-4xl font-extrabold text-white mb-2">
+                                                                        <GermanWordDisplay card={currentCard} genderDisplayStyle={genderDisplayStyle} aiVerbFormPerfekt={aiVerbFormPerfekt} aiVerbFormPrasens={aiVerbFormPrasens} />
+                                                                    </div>
+                                                                    {currentCard.ipa && <div className="text-sm font-mono text-slate-400">[{currentCard.ipa}]</div>}
+                                                                    {posTag && <div className="mt-1"><span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">{posTag}</span></div>}
+                                                                    {currentCard.plural && currentCard.plural.trim() && <div className="text-sm text-slate-400 mt-1">(Plural: {currentCard.plural.trim()})</div>}
+                                                                    {currentCard.example && (
+                                                                        <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800 max-w-md mx-auto mt-3">
+                                                                            <p className="text-sm text-slate-200 italic">"{currentCard.example}"</p>
+                                                                            {currentCard.exampleTranslation && <p className="text-xs text-slate-400 mt-1">{currentCard.exampleTranslation}</p>}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex justify-between items-center pt-4 border-t border-slate-700/60">
+                                                        <div className="flex items-center gap-2">
+                                                            <button onClick={(e) => { e.stopPropagation(); playAudio((currentCard.article ? currentCard.article + ' ' : '') + currentCard.german, 'de-DE'); }} className="p-2 bg-slate-900 hover:bg-slate-950 rounded-lg text-slate-300 hover:text-amber-400" title="Pronounce German">
+                                                                <Icons.Speaker />
+                                                            </button>
+                                                        </div>
+                                                        <span className={`text-xs px-3 py-1 rounded-full font-bold ${currentCard.isLearned ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-900 text-slate-400'}`}>
+                                                            {currentCard.isLearned ? 'Learned ✓' : 'Learning'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center justify-between gap-4">
+                                                    <button onClick={prevStudyCard} disabled={studySession.historyIndex === 0} className="px-5 py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl font-bold text-sm flex items-center gap-2">
+                                                        <Icons.ArrowLeft /> Previous
+                                                    </button>
+                                                    <div className="flex items-center gap-3">
+                                                        <button onClick={() => nextStudyCard(false)} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold text-sm text-slate-300">
+                                                            Next
+                                                        </button>
+                                                        <button onClick={() => nextStudyCard(true)} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-bold text-sm text-white shadow-lg flex items-center gap-2">
+                                                            <Icons.Check /> Mark Learned &amp; Next
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })() : (
+                                        <div className="text-center py-16 bg-slate-800/50 border border-slate-700 rounded-3xl space-y-4">
+                                            <div className="w-16 h-16 bg-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto">
+                                                <Icons.Trophy />
+                                            </div>
+                                            <h3 className="text-2xl font-bold text-white">Study Session Completed! 🎉</h3>
+                                            <p className="text-sm text-slate-400 max-w-md mx-auto">You have reviewed all cards in this study session.</p>
+                                            <div className="flex justify-center gap-3 pt-4">
+                                                <button onClick={startStudy} className="px-6 py-3 bg-amber-500 text-slate-950 font-bold text-sm rounded-xl hover:bg-amber-400">
+                                                    Study Again
+                                                </button>
+                                                <button onClick={() => setCurrentView('set')} className="px-6 py-3 bg-slate-800 text-slate-300 font-bold text-sm rounded-xl hover:bg-slate-700">
+                                                    Return to Set
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {currentView === 'quiz_play' && (
+                                <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+                                    <div className="flex items-center justify-between">
+                                        <button onClick={() => setCurrentView('set')} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white"><Icons.ArrowLeft /> Exit Quiz</button>
+                                        <span className="text-xs text-slate-400 font-mono">Question {quizState.currentIndex + 1} of {quizState.questions.length}</span>
+                                    </div>
+
+                                    {quizState.isLoadingAI ? (
+                                        <div className="text-center py-24 bg-slate-800/40 border border-slate-700 rounded-3xl space-y-4">
+                                            <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                                            <h3 className="text-xl font-bold text-white">AI is crafting your exercise...</h3>
+                                            <p className="text-xs text-slate-400">Please wait while Gemini generates custom sentences &amp; questions.</p>
+                                        </div>
+                                    ) : quizState.questions.length > 0 && quizState.currentIndex < quizState.questions.length ? (() => {
+                                        const q = quizState.questions[quizState.currentIndex];
+                                        return (
+                                            <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">{q.title}</span>
+                                                    {q.germanSpeech && (
+                                                        <button onClick={() => playAudio(q.germanSpeech, 'de-DE')} className="p-2 bg-slate-900 hover:bg-slate-950 text-slate-300 hover:text-amber-400 rounded-lg">
+                                                            <Icons.Speaker />
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <h3 className="text-2xl font-bold text-white whitespace-pre-line">{q.prompt}</h3>
+                                                    {q.subtext && <p className="text-sm text-slate-400">{q.subtext}</p>}
+                                                </div>
+
+                                                {q.format === 'multiple_choice' && q.options ? (
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        {q.options.map((opt, idx) => {
+                                                            let btnStyle = "bg-slate-900 border-slate-700 hover:bg-slate-750 text-white";
+                                                            const isUserChosen = quizState.userAnswers[q.id] === opt;
+                                                            if (currentCheckResult) {
+                                                                const cNorm = normalizeText(q.correctAnswer);
+                                                                const altNorm = normalizeText(q.altCorrectAnswer || '');
+                                                                const optNorm = normalizeText(opt);
+                                                                const isOptCorrect = (optNorm === cNorm) || (altNorm && optNorm === altNorm);
+
+                                                                if (isOptCorrect) btnStyle = "bg-emerald-600 border-emerald-500 text-white font-bold";
+                                                                else if (isUserChosen && !isOptCorrect) btnStyle = "bg-rose-600 border-rose-500 text-white font-bold";
+                                                            } else if (isUserChosen) {
+                                                                btnStyle = "bg-amber-500 text-slate-950 font-bold border-amber-400";
+                                                            }
+
+                                                            return (
+                                                                <button
+                                                                    key={idx}
+                                                                    onClick={() => handleAnswerSubmit(opt)}
+                                                                    disabled={Boolean(currentCheckResult)}
+                                                                    className={`p-4 rounded-2xl border text-left font-medium transition-all ${btnStyle}`}
+                                                                >
+                                                                    {opt}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-4">
+                                                        <div className="flex gap-2">
+                                                            <input
+                                                                ref={writtenInputRef}
+                                                                type="text"
+                                                                value={writtenInput}
+                                                                onChange={(e) => setWrittenInput(e.target.value)}
+                                                                onKeyDown={(e) => { if (e.key === 'Enter' && !currentCheckResult) handleAnswerSubmit(writtenInput); }}
+                                                                disabled={Boolean(currentCheckResult)}
+                                                                placeholder="Type your answer in German..."
+                                                                className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 text-lg"
+                                                            />
+                                                            {!currentCheckResult && (
+                                                                <button onClick={() => handleAnswerSubmit(writtenInput)} className="px-6 py-3 bg-amber-500 text-slate-950 font-bold rounded-2xl hover:bg-amber-400">
+                                                                    Submit
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {currentCheckResult && (                                                    <div className={`p-4 rounded-2xl flex items-center justify-between animate-fade-in ${currentCheckResult === 'correct' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+                                                        <div>
+                                                            <p className="font-bold">{currentCheckResult === 'correct' ? 'Correct! 🎉' : 'Incorrect ❌'}</p>
+                                                            {currentCheckResult === 'wrong' && <p className="text-xs mt-0.5">Correct answer: <span className="font-bold underline">{q.correctAnswer}</span></p>}
+                                                            {q.explanation && <p className="text-xs mt-1 text-slate-300">{q.explanation}</p>}
+                                                        </div>
+                                                        <button onClick={handleNextQuizQuestion} className="px-5 py-2.5 bg-white text-slate-950 font-bold text-sm rounded-xl hover:bg-slate-200">
+                                                            Next Question ➔
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })() : null}
+                                </div>
+                            )}
+
+                            {currentView === 'quiz_summary' && (
+                                <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+                                    <div className="bg-slate-800 border border-slate-700 rounded-3xl p-8 text-center space-y-6 shadow-2xl">
+                                        <div className="w-20 h-20 bg-amber-500/20 text-amber-400 rounded-3xl flex items-center justify-center mx-auto">
+                                            <Icons.Trophy />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-3xl font-extrabold text-white mb-1">Quiz Completed!</h2>
+                                            <p className="text-sm text-slate-400">Here is your final score summary.</p>
+                                        </div>
+
+                                        <div className="text-5xl font-black text-amber-400">
+                                            {quizState.score} / {quizState.questions.length}
+                                        </div>
+
+                                        <div className="flex justify-center gap-4 pt-4">
+                                            {quizState.wrongQuestions.length > 0 && (
+                                                <button onClick={() => startQuiz(true, quizState.wrongQuestions.map(w => w.cardId))} className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm rounded-xl shadow-lg">
+                                                    Retest Wrong Answers ({quizState.wrongQuestions.length})
+                                                </button>
+                                            )}
+                                            <button onClick={() => setCurrentView('set')} className="px-6 py-3 bg-amber-500 text-slate-950 font-bold text-sm rounded-xl hover:bg-amber-400">
+                                                Return to Set
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {currentView === 'listening_dictation_play' && (
+                                <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+                                    <div className="flex items-center justify-between">
+                                        <button onClick={() => setCurrentView('set')} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white"><Icons.ArrowLeft /> Exit Dictation</button>
+                                        <span className="text-xs text-slate-400 font-mono">Dictation {listeningDictationState.currentIndex + 1} of {listeningDictationState.questions.length}</span>
+                                    </div>
+
+                                    {listeningDictationState.isLoadingAI ? (
+                                        <div className="text-center py-24 bg-slate-800/40 border border-slate-700 rounded-3xl space-y-4">
+                                            <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                                            <h3 className="text-xl font-bold text-white">AI is generating dictation sentences...</h3>
+                                            <p className="text-xs text-slate-400">Creating natural sentences incorporating unit vocabulary.</p>
+                                        </div>
+                                    ) : listeningDictationState.questions.length > 0 && listeningDictationState.currentIndex < listeningDictationState.questions.length ? (() => {
+                                        const q = listeningDictationState.questions[listeningDictationState.currentIndex];
+                                        return (
+                                            <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">Listen &amp; Dictation</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <select
+                                                            value={listeningDictationState.playbackSpeed}
+                                                            onChange={(e) => setListeningDictationState(prev => ({ ...prev, playbackSpeed: parseFloat(e.target.value) }))}
+                                                            className="bg-slate-900 border border-slate-700 rounded-lg text-xs px-2 py-1 text-slate-300"
+                                                        >
+                                                            <option value="0.75">0.75x (Slow)</option>
+                                                            <option value="1.0">1.0x (Normal)</option>
+                                                            <option value="0.5">0.5x (Very Slow)</option>
+                                                        </select>
+                                                        <button onClick={() => playAudio(q.audioText, q.audioLang || 'de-DE', listeningDictationState.playbackSpeed)} className="p-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl shadow-lg flex items-center gap-2 font-semibold text-xs">
+                                                            <Icons.Speaker /> Play Audio 🔊
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2 text-center py-4 bg-slate-950/40 rounded-2xl border border-slate-800">
+                                                    <p className="text-sm text-slate-400">Listen carefully and type what you hear in German.</p>
+                                                    {q.englishTranslation && <p className="text-xs text-slate-500 italic">Hint (English): "{q.englishTranslation}"</p>}
+                                                </div>
+
+                                                <div className="space-y-4">
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            ref={writtenInputRef}
+                                                            type="text"
+                                                            value={writtenInput}
+                                                            onChange={(e) => setWrittenInput(e.target.value)}
+                                                            onKeyDown={(e) => { if (e.key === 'Enter' && !dictationCheckResult) handleDictationAnswerSubmit(writtenInput); }}
+                                                            disabled={Boolean(dictationCheckResult)}
+                                                            placeholder="Type German sentence or word here..."
+                                                            className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 text-lg"
+                                                        />
+                                                        {!dictationCheckResult && (
+                                                            <button onClick={() => handleDictationAnswerSubmit(writtenInput)} className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-2xl">
+                                                                Check
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {dictationCheckResult && (
+                                                    <div className={`p-4 rounded-2xl flex items-center justify-between animate-fade-in ${dictationCheckResult === 'correct' ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border border-rose-800 text-rose-300'}`}>
+                                                        <div>
+                                                            <p className="font-bold">{dictationCheckResult === 'correct' ? 'Correct! 🎉' : 'Incorrect ❌'}</p>
+                                                            <p className="text-xs mt-1">Correct sentence: <span className="font-bold underline text-white">{q.correctAnswer}</span></p>
+                                                        </div>
+                                                        <button onClick={handleNextDictationQuestion} className="px-5 py-2.5 bg-white text-slate-950 font-bold text-sm rounded-xl hover:bg-slate-200">
+                                                            Next ➔
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })() : null}
+                                </div>
+                            )}
+
+                            {currentView === 'listening_dictation_summary' && (
+                                <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+                                    <div className="bg-slate-800 border border-slate-700 rounded-3xl p-8 text-center space-y-6 shadow-2xl">
+                                        <div className="w-20 h-20 bg-purple-500/20 text-purple-400 rounded-3xl flex items-center justify-center mx-auto">
+                                            <Icons.Trophy />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-3xl font-extrabold text-white mb-1">Dictation Completed!</h2>
+                                            <p className="text-sm text-slate-400">Great job practicing your listening skills.</p>
+                                        </div>
+
+                                        <div className="text-5xl font-black text-purple-400">
+                                            {listeningDictationState.score} / {listeningDictationState.questions.length}
+                                        </div>
+
+                                        <div className="flex justify-center gap-4 pt-4">
+                                            <button onClick={() => setCurrentView('set')} className="px-6 py-3 bg-purple-600 text-white font-bold text-sm rounded-xl hover:bg-purple-500">
+                                                Return to Set
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {currentView === 'trash' && (
+                                <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+                                    <h2 className="text-2xl font-extrabold text-white">Trash Bin</h2>
+                                    <div className="space-y-4">
+                                        {trashedFolders.length === 0 && trashedSets.length === 0 && trashedCards.length === 0 ? (
+                                            <p className="text-slate-400 text-sm">Trash is empty.</p>
+                                        ) : (
+                                            <>
+                                                {trashedFolders.map(f => (
+                                                    <div key={f.id} className="flex items-center justify-between bg-slate-800 p-4 rounded-xl border border-slate-700">
+                                                        <div><span className="font-bold text-white">[Folder] {f.name}</span></div>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => handleRestoreFolder(f.id)} className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg font-bold">Restore</button>
+                                                            <button onClick={() => handlePermanentDeleteFolder(f.id)} className="px-3 py-1 bg-rose-600 text-white text-xs rounded-lg font-bold">Delete Forever</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {trashedSets.map(s => (
+                                                    <div key={s.id} className="flex items-center justify-between bg-slate-800 p-4 rounded-xl border border-slate-700">
+                                                        <div><span className="font-bold text-white">[Set] {s.title}</span></div>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => handleRestoreSet(s.id)} className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg font-bold">Restore</button>
+                                                            <button onClick={() => handlePermanentDeleteSet(s.id)} className="px-3 py-1 bg-rose-600 text-white text-xs rounded-lg font-bold">Delete Forever</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {trashedCards.map(c => (
+                                                    <div key={c.id} className="flex items-center justify-between bg-slate-800 p-4 rounded-xl border border-slate-700">
+                                                        <div><span className="font-bold text-white">[Card] {c.article ? c.article + ' ' : ''}{c.german} = {c.vietnamese}</span></div>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => handleRestoreCard(c.id)} className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg font-bold">Restore</button>
+                                                            <button onClick={() => handlePermanentDeleteCard(c.id)} className="px-3 py-1 bg-rose-600 text-white text-xs rounded-lg font-bold">Delete Forever</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </main>
+                    </div>
+
+                    {/* AI Import Modal with Noun Gender & Verb Form Settings */}
+                    {isAiImportModalOpen && (
+                        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+                                <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Icons.Sparkles />
+                                        <h3 className="font-bold text-lg text-white">Create Vocabulary with AI</h3>
+                                    </div>
+                                    <button onClick={() => setIsAiImportModalOpen(false)} className="p-1.5 text-slate-400 hover:text-white rounded-lg"><Icons.Cross /></button>
+                                </div>
+                                <div className="p-6 overflow-y-auto space-y-5 flex-1">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Paste Text / Vocabulary List</label>
+                                        <textarea value={importRawText} onChange={(e) => setImportRawText(e.target.value)} placeholder="Paste German text, vocabulary list, or topic (e.g. at the restaurant, daily routine)..." rows={4} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Custom AI Instructions (Optional)</label>
+                                        <input type="text" value={customPromptNote} onChange={(e) => setCustomPromptNote(e.target.value)} placeholder="e.g. Focus on A1 level nouns and common verbs..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500" />
+                                    </div>
+
+                                    {/* SECTION A: NOUN GENDER DISPLAY */}
+                                    <div className="pt-3 border-t border-slate-800">
+                                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Section A: Noun Gender Display</label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => updateGenderDisplayStyle('color_word')}
+                                                className={`px-4 py-3 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2 transition-all ${genderDisplayStyle === 'color_word' ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-md' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}
+                                            >
+                                                <span className="w-3 h-3 rounded-full bg-blue-400 inline-block"></span>
+                                                Colored Gender Label
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => updateGenderDisplayStyle('colored_dot')}
+                                                className={`px-4 py-3 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2 transition-all ${genderDisplayStyle === 'colored_dot' ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-md' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}
+                                            >
+                                                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>
+                                                Colored Dot
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* SECTION B: VERB FORMS */}
+                                    <div className="pt-3 border-t border-slate-800">
+                                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Section B: Verb Forms</label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={toggleAiVerbPerfekt}
+                                                className={`px-4 py-3 rounded-xl border text-sm font-semibold flex items-center justify-between transition-all ${aiVerbFormPerfekt ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-md' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}
+                                            >
+                                                <span>Partizip Perfekt</span>
+                                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${aiVerbFormPerfekt ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-500'}`}>
+                                                    {aiVerbFormPerfekt ? '✓' : ''}
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={toggleAiVerbPrasens}
+                                                className={`px-4 py-3 rounded-xl border text-sm font-semibold flex items-center justify-between transition-all ${aiVerbFormPrasens ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-md' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}
+                                            >
+                                                <span>Partizip Präsens</span>
+                                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${aiVerbFormPrasens ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-500'}`}>
+                                                    {aiVerbFormPrasens ? '✓' : ''}
+                                                </span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="p-5 border-t border-slate-800 flex justify-end gap-3 bg-slate-950/50">
+                                    <button onClick={() => setIsAiImportModalOpen(false)} className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800">Cancel</button>
+                                    <button onClick={handleAIImport} disabled={isAiImporting || !importRawText.trim()} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 disabled:opacity-50 flex items-center gap-2">
+                                        {isAiImporting ? <span className="animate-spin">⏳</span> : <Icons.Sparkles />}
+                                        {isAiImporting ? 'Generating...' : 'Generate with AI'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* API Key Modal */}
+                    {isApiKeyModalOpen && (
+                        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4 animate-fade-in">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="font-bold text-lg text-white flex items-center gap-2"><Icons.Key /> Gemini API Key</h3>
+                                    <button onClick={() => setIsApiKeyModalOpen(false)} className="p-1 text-slate-400 hover:text-white rounded-lg"><Icons.Cross /></button>
+                                </div>
+                                <p className="text-xs text-slate-400">Enter your Google Gemini API key to enable AI vocabulary generation, fill-in-the-blank exercises, and sentence dictations.</p>
+                                <input
+                                    type="password"
+                                    defaultValue={userApiKey}
+                                    id="apiKeyInput"
+                                    placeholder="AIzaSy..."
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500"
+                                />
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button onClick={() => setIsApiKeyModalOpen(false)} className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800">Cancel</button>
+                                    <button onClick={() => { const val = document.getElementById('apiKeyInput').value; saveApiKey(val); }} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-slate-950 hover:bg-amber-400">Save API Key</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Quiz Configuration Modal */}
+                    {isQuizConfigOpen && (
+                        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl p-6 space-y-5 animate-fade-in">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="font-bold text-lg text-white flex items-center gap-2"><Icons.Quiz /> Quiz &amp; Exercise Setup</h3>
+                                    <button onClick={() => setIsQuizConfigOpen(false)} className="p-1 text-slate-400 hover:text-white rounded-lg"><Icons.Cross /></button>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Exercise Mode</label>
+                                        <select
+                                            value={quizConfig.quizMode}
+                                            onChange={(e) => setQuizConfig(prev => ({ ...prev, quizMode: e.target.value }))}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500"
+                                        >
+                                            <option value="mixed">Mixed Vocabulary &amp; Grammar Review</option>
+                                            <option value="spelling">Spelling &amp; Translation</option>
+                                            <option value="gender">Noun Gender (der / die / das)</option>
+                                            <option value="plural">Noun Plural Forms</option>
+                                            <option value="fill_blank">AI Fill-in-the-Blank Sentences</option>
+                                            <option value="ai_prompt">Custom AI Exercise Prompt</option>
+                                        </select>
+                                    </div>
+
+                                    {quizConfig.quizMode === 'ai_prompt' && (
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Custom Exercise Instructions</label>
+                                            <textarea
+                                                value={quizConfig.customPrompt}
+                                                onChange={(e) => setQuizConfig(prev => ({ ...prev, customPrompt: e.target.value }))}
+                                                placeholder="e.g. Create 5 grammar questions testing accusative case with these vocabulary words..."
+                                                rows={3}
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {quizConfig.quizMode === 'fill_blank' && (
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Difficulty</label>
+                                            <select
+                                                value={quizConfig.difficulty}
+                                                onChange={(e) => setQuizConfig(prev => ({ ...prev, difficulty: e.target.value }))}
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500"
+                                            >
+                                                <option value="easy">Easy (A1)</option>
+                                                <option value="medium">Medium (A2)</option>
+                                                <option value="hard">Hard (B1+)</option>
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Answer Format</label>
+                                        <select
+                                            value={quizConfig.answerFormat}
+                                            onChange={(e) => setQuizConfig(prev => ({ ...prev, answerFormat: e.target.value }))}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-500"
+                                        >
+                                            <option value="mixed">Mixed (Multiple Choice &amp; Written)</option>
+                                            <option value="multiple_choice">Multiple Choice</option>
+                                            <option value="written">Written / Typing</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end gap-3 pt-3">
+                                    <button onClick={() => setIsQuizConfigOpen(false)} className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800">Cancel</button>
+                                    <button onClick={() => startQuiz(false)} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg">Start Quiz</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Listen & Dictation Selection Modal */}
+                    {isListeningDictationModalOpen && (
+                        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4 animate-fade-in">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="font-bold text-lg text-white flex items-center gap-2"><Icons.Speaker /> Listen &amp; Dictation</h3>
+                                    <button onClick={() => setIsListeningDictationModalOpen(false)} className="p-1 text-slate-400 hover:text-white rounded-lg"><Icons.Cross /></button>
+                                </div>
+                                <p className="text-xs text-slate-400">Choose your dictation mode for this unit:</p>
+                                <div className="space-y-3 pt-2">
+                                    <button onClick={startSentenceDictation} className="w-full p-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm text-left shadow-lg flex items-center justify-between">
+                                        <div>
+                                            <div className="font-bold">AI Sentence Dictation 🤖</div>
+                                            <div className="text-xs text-purple-200 font-normal mt-0.5">AI generates sentences using unit vocabulary</div>
+                                        </div>
+                                        <span>➔</span>
+                                    </button>
+                                    <button onClick={() => startWordDictation('de_de')} className="w-full p-4 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-white font-bold text-sm text-left flex items-center justify-between">
+                                        <div>
+                                            <div className="font-bold">German Word ➔ Spelling</div>
+                                            <div className="text-xs text-slate-400 font-normal mt-0.5">Listen to German audio &amp; type spelling</div>
+                                        </div>
+                                        <span>➔</span>
+                                    </button>
+                                    <button onClick={() => startWordDictation('en_de')} className="w-full p-4 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-white font-bold text-sm text-left flex items-center justify-between">
+                                        <div>
+                                            <div className="font-bold">English Audio ➔ German Spelling</div>
+                                            <div className="text-xs text-slate-400 font-normal mt-0.5">Listen to English meaning &amp; type German</div>
+                                        </div>
+                                        <span>➔</span>
+                                    </button>
+                                </div>
+                                <div className="flex justify-end pt-2">
+                                    <button onClick={() => setIsListeningDictationModalOpen(false)} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Confirm Dialog Modal */}
+                    {confirmDialog.isOpen && (
+                        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl animate-fade-in">
+                                <h3 className="font-bold text-lg text-white">Confirm Action</h3>
+                                <p className="text-sm text-slate-300">{confirmDialog.message}</p>
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button onClick={() => setConfirmDialog({ isOpen: false, message: '', onConfirm: null })} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800">Cancel</button>
+                                    <button onClick={confirmDialog.onConfirm} className="px-4 py-2 rounded-xl text-sm font-bold bg-rose-600 hover:bg-rose-500 text-white">Confirm</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
